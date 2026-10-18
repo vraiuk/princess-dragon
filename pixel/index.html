@@ -1,0 +1,1302 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Принцесса и Дракон — пиксельная сказка</title>
+<meta name="description" content="Мультфильм в стиле пиксель-арта Марка Феррари: color cycling, дизеринг, озвучка и музыка — всё на чистом JavaScript.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;600;700&family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0b0814;--panel:#17112a;--fg:#f3eaff;--accent:#ffd54a;--muted:#9a8fc2}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--fg);font-family:'Pixelify Sans',monospace}
+  body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+  .wrap{width:min(100%,calc((100vh - 160px)*16/9));display:flex;flex-direction:column;gap:12px}
+  .stage{position:relative;width:100%;aspect-ratio:16/9;background:#000;border:4px solid #2a2048;box-shadow:0 0 0 4px #000,0 24px 60px #000a}
+  canvas{display:block;width:100%;height:100%;image-rendering:pixelated;cursor:pointer}
+  .big-play{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:9%;gap:12px;background:linear-gradient(transparent 45%,#000a);border:0;color:#fff;font:600 clamp(16px,2.4vw,26px) 'Pixelify Sans',monospace;cursor:pointer}
+  .big-play .btn{background:var(--accent);color:#2a1830;padding:12px 26px;box-shadow:0 0 0 4px #2a1830,6px 6px 0 4px #000;font-size:clamp(18px,2.8vw,30px)}
+  .big-play:hover .btn{transform:translateY(-2px)}
+  .big-play[hidden]{display:none}
+  .big-play:disabled{cursor:wait}
+  .controls{display:flex;align-items:center;gap:8px;background:var(--panel);padding:10px 12px;border:3px solid #2a2048;flex-wrap:wrap}
+  .controls button{background:#2c2552;color:var(--fg);border:0;padding:8px 12px;font:600 16px 'Pixelify Sans',monospace;cursor:pointer;box-shadow:inset 0 -3px 0 #0005}
+  .controls button:hover{background:#3b3270}
+  .controls button.rec{background:#7a2240}
+  .controls button:disabled{opacity:.5;cursor:default}
+  input[type=range]{flex:1;min-width:120px;accent-color:var(--accent)}
+  .time{font-variant-numeric:tabular-nums;color:var(--muted);min-width:96px;text-align:center}
+  .hint{color:var(--muted);font-size:14px;text-align:center}
+  .hint a{color:var(--accent)}
+  .styles{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+  .styles a{color:var(--fg);text-decoration:none;background:var(--panel);border:3px solid #2a2048;padding:6px 14px;font-size:16px}
+  .styles a.on{background:var(--accent);color:#2a1830;border-color:#2a1830}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav class="styles"><a href="../">← Все стили</a><a class="on" href="./">Пиксель-арт</a><a href="../paper/">Бумага</a><a href="../shadow/">Театр теней</a></nav>
+  <div class="stage">
+    <canvas id="cv"></canvas>
+    <button class="big-play" id="bigPlay" disabled><span class="btn" id="bigLabel">Загрузка…</span></button>
+  </div>
+  <div class="controls">
+    <button id="btnPlay">▶ Пуск</button>
+    <button id="btnRestart" title="С начала">⏮</button>
+    <input type="range" id="scrub" min="0" max="135" step="0.01" value="0">
+    <span class="time" id="time">0:00 / 2:15</span>
+    <button id="btnSound">🔊 Звук</button>
+    <button id="btnRec" class="rec">🎬 Скачать видео</button>
+  </div>
+  <div class="hint">Пробел — пауза · ← → — перемотка · картинка, анимация и музыка генерируются кодом в реальном времени (палитра 256 цветов, color cycling в духе Марка Феррари)</div>
+</div>
+
+<script>
+'use strict';
+for (const f of ["700 40px 'Pixelify Sans'", "20px 'Press Start 2P'"]) document.fonts.load(f, 'Принцесса и Дракон').catch(() => {});
+// =====================================================================
+//  Экран: 320×180 в индексных цветах → палитра → апскейл ×4
+// =====================================================================
+const VW = 320, VH = 180, SC = 4, W = VW * SC, H = VH * SC, DUR = 135;
+const $ = id => document.getElementById(id);
+const cv = $('cv'); cv.width = W; cv.height = H;
+const ctx = cv.getContext('2d'); ctx.imageSmoothingEnabled = false;
+const low = document.createElement('canvas'); low.width = VW; low.height = VH;
+const lctx = low.getContext('2d');
+const img = lctx.createImageData(VW, VH), img32 = new Uint32Array(img.data.buffer);
+const FB = Buf(VW, VH), SP = Buf(VW, VH);
+const fb = FB.d;
+
+function Buf(w, h) { return { w, h, d: new Uint8Array(w * h) }; }
+const BAY = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + .5) / 16);
+const bay = (x, y) => BAY[(y & 3) * 4 + (x & 3)];
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, k) => a + (b - a) * k;
+const prog = (a, b, x) => clamp((x - a) / (b - a));
+const eio = k => k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+const sstep = (a, b, x) => { const k = prog(a, b, x); return k * k * (3 - 2 * k); };
+const range = (s, n) => Array.from({ length: n }, (_, i) => s + i);
+const PI = Math.PI;
+
+function hash2(x, y) {
+  let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177); h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+function vnoise(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash2(xi, yi), b = hash2(xi + 1, yi), c = hash2(xi, yi + 1), d = hash2(xi + 1, yi + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+function fbm(x, y, o = 4) {
+  let s = 0, a = .5, f = 1, n = 0;
+  for (let i = 0; i < o; i++) { s += a * vnoise(x * f + i * 17.3, y * f); n += a; f *= 2; a *= .5; }
+  return s / n;
+}
+
+// =====================================================================
+//  Палитра: индексы
+// =====================================================================
+const INK = 1, SKIN = [3, 2, 4], HAIR = [6, 5, 7], DRESS = [9, 8, 10], WHITE = 11, GOLD = [13, 12],
+  EYE = 14, METAL = 15, DR = [17, 16, 18], BELLY = [20, 19], WING = [22, 21], HORN = [24, 23],
+  DEYE = 25, MOUTH = 26, TOOTH = 27, SASH = [29, 28], LGLASS = 30, SMOKE = 31;
+const SKY = range(32, 16), WA = 48, WB = 56, FALL = 64, FIRE = 72, STAR = 80, GLOW = 88, AUR = 96, RAY = 104;
+const TF = range(112, 4), TM = range(116, 4), TN = range(120, 4), TX = range(124, 4);
+const GR = range(128, 4), LF = range(132, 4), TR = range(136, 4), DT = range(140, 4);
+const ST = range(144, 8), ST2 = range(152, 8), CL = range(160, 8), CL2 = range(168, 8);
+const EX = 176, FLAME = 184, WARM = 188;
+
+const CHAR_COLS = ['#f4c4a0', '#c98a74', '#ffe2c8', '#94704c', '#5a4030', '#c09a70', '#d8508a', '#8e2a5e', '#ff90ba',
+  '#fff8ec', '#ffd54a', '#b88020', '#2a1830', '#7a7a90', '#3a9a78', '#1f5a50', '#86d8a0', '#f2dc96', '#b8935a',
+  '#e8763e', '#a03c30', '#f4ead0', '#a89880', '#ffdc3c', '#7a1828', '#ffffff', '#5a8ae0', '#2c4a9a', '#ffe6a0', '#c8c0d8'];
+const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+function keys(P, start, n, cols) {
+  const c = cols.map(hex);
+  for (let i = 0; i < n; i++) {
+    const f = n === 1 ? 0 : i / (n - 1) * (c.length - 1), a = Math.floor(f), b = Math.min(c.length - 1, a + 1), k = f - a;
+    for (let ch = 0; ch < 3; ch++) P[(start + i) * 3 + ch] = c[a][ch] + (c[b][ch] - c[a][ch]) * k;
+  }
+}
+function list(P, start, cols) { cols.forEach((h, i) => P.set(hex(h), (start + i) * 3)); }
+function makePal(fn) {
+  const P = new Float32Array(768);
+  list(P, 0, ['#000000', '#140a18']); list(P, 2, CHAR_COLS);
+  list(P, FLAME, ['#a01808', '#f05010', '#ffb020', '#fff4c0']);
+  fn(P); return P;
+}
+function cycle(P, s, n, shift) {
+  const tmp = new Float32Array(n * 3);
+  shift = ((shift % n) + n) % n;
+  const i0 = Math.floor(shift), fr = shift - i0;
+  for (let k = 0; k < n; k++) {
+    const a = (k + i0) % n, b = (k + i0 + 1) % n;
+    for (let ch = 0; ch < 3; ch++) tmp[k * 3 + ch] = P[(s + a) * 3 + ch] * (1 - fr) + P[(s + b) * 3 + ch] * fr;
+  }
+  P.set(tmp, s * 3);
+}
+
+// =====================================================================
+//  Примитивы растеризации (рисуют в текущий буфер T)
+// =====================================================================
+let T = FB;
+function px(x, y, c) { x = Math.floor(x); y = Math.floor(y); if (x >= 0 && y >= 0 && x < T.w && y < T.h) T.d[y * T.w + x] = c; }
+function get(x, y) { x = Math.floor(x); y = Math.floor(y); return (x >= 0 && y >= 0 && x < T.w && y < T.h) ? T.d[y * T.w + x] : 0; }
+function span(y, x0, x1, c) {
+  y = Math.floor(y); if (y < 0 || y >= T.h) return;
+  const a = Math.max(0, Math.round(x0)), b = Math.min(T.w, Math.round(x1)), row = y * T.w;
+  if (a >= b) return;
+  if (typeof c === 'number') T.d.fill(c, row + a, row + b);
+  else for (let x = a; x < b; x++) { const v = c(x, y); if (v) T.d[row + x] = v; }
+}
+function rect(x, y, w, h, c) { for (let j = Math.floor(y); j < Math.floor(y + h); j++) span(j, x, x + w, c); }
+function ellipse(cx, cy, rx, ry, c) {
+  if (rx <= 0 || ry <= 0) return;
+  for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) {
+    const dy = (y + .5 - cy) / ry; if (dy <= -1 || dy >= 1) continue;
+    const hw = rx * Math.sqrt(1 - dy * dy); span(y, cx - hw, cx + hw, c);
+  }
+}
+function poly(pts, c) {
+  let y0 = 1e9, y1 = -1e9;
+  for (const p of pts) { y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }
+  for (let y = Math.floor(y0); y <= Math.ceil(y1); y++) {
+    const yc = y + .5, xs = [];
+    for (let i = 0, n = pts.length; i < n; i++) {
+      const [ax, ay] = pts[i], [bx, by] = pts[(i + 1) % n];
+      if ((ay <= yc && by > yc) || (by <= yc && ay > yc)) xs.push(ax + (yc - ay) / (by - ay) * (bx - ax));
+    }
+    xs.sort((a, b) => a - b);
+    for (let k = 0; k + 1 < xs.length; k += 2) span(y, xs[k], xs[k + 1], c);
+  }
+}
+function line(x0, y0, x1, y1, c) {
+  x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
+  const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  let e = dx + dy;
+  for (let i = 0; i < 400; i++) {
+    px(x0, y0, c); if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * e; if (e2 >= dy) { e += dy; x0 += sx; } if (e2 <= dx) { e += dx; y0 += sy; }
+  }
+}
+function rampAt(r, f, x, y) {
+  const n = r.length; if (n === 1) return r[0];
+  f = clamp(f, 0, .9999); const v = f * (n - 1), i = Math.floor(v);
+  return r[(i + 1 < n && v - i > bay(x, y)) ? i + 1 : i];
+}
+let LIGHT = { x: -.6, y: -.8 };
+function lit(ramp, cx, cy, rx, ry, bias = 0) {
+  return (x, y) => rampAt(ramp, .5 + bias + (((x + .5 - cx) / rx) * LIGHT.x + ((y + .5 - cy) / ry) * LIGHT.y) * .55, x, y);
+}
+function bez(p0, p1, p2, n = 16) {
+  const r = [];
+  for (let i = 0; i <= n; i++) { const k = i / n, a = (1 - k) * (1 - k), b = 2 * (1 - k) * k, c = k * k; r.push([a * p0[0] + b * p1[0] + c * p2[0], a * p0[1] + b * p1[1] + c * p2[1]]); }
+  return r;
+}
+
+// ----- Локальная система координат для персонажей (масштаб, отражение) -----
+let O = { x: 0, y: 0, s: 1, f: 1 };
+const X = x => O.x + x * O.s * O.f, Y = y => O.y + y * O.s;
+function E(cx, cy, rx, ry, c, edge) {
+  const sx = X(cx), sy = Y(cy), a = Math.max(.5, rx * O.s), b = Math.max(.5, ry * O.s);
+  if (edge) ellipse(sx, sy, a + 1, b + 1, edge);
+  ellipse(sx, sy, a, b, Array.isArray(c) ? lit(c, sx, sy, a, b) : c);
+}
+function Pg(pts, c, edge) {
+  const sp = pts.map(p => [X(p[0]), Y(p[1])]);
+  if (edge) for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) poly(sp.map(p => [p[0] + dx, p[1] + dy]), edge);
+  let fill = c;
+  if (Array.isArray(c)) {
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (const p of sp) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }
+    fill = lit(c, (x0 + x1) / 2, (y0 + y1) / 2, Math.max(1, (x1 - x0) / 2), Math.max(1, (y1 - y0) / 2));
+  }
+  poly(sp, fill);
+}
+function Ch(pts, r0, r1, c, edge) {
+  const samp = [];
+  let total = 0; const seg = [];
+  for (let i = 1; i < pts.length; i++) { const l = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); seg.push(l); total += l; }
+  const step = Math.max(.25, .6 / O.s);
+  let acc = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const [ax, ay] = pts[i - 1], [bx, by] = pts[i];
+    for (let d = 0; d < seg[i - 1]; d += step) { const k = d / seg[i - 1], tt = (acc + d) / total; samp.push([ax + (bx - ax) * k, ay + (by - ay) * k, lerp(r0, r1, tt)]); }
+    acc += seg[i - 1];
+  }
+  const last = pts[pts.length - 1]; samp.push([last[0], last[1], r1]);
+  if (edge) for (const [x, y, r] of samp) ellipse(X(x), Y(y), r * O.s + 1, r * O.s + 1, edge);
+  for (const [x, y, r] of samp) { const sx = X(x), sy = Y(y), rr = r * O.s; ellipse(sx, sy, rr, rr, Array.isArray(c) ? lit(c, sx, sy, rr, rr) : c); }
+  return samp;
+}
+const Ln = (x0, y0, x1, y1, c) => line(X(x0), Y(y0), X(x1), Y(y1), c);
+const Px = (x, y, c) => px(X(x), Y(y), c);
+
+function beginSprite() { SP.d.fill(0); T = SP; }
+function endSprite(ink = INK) {
+  const d = SP.d, w = VW, h = VH, mark = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x; if (d[i]) continue;
+    if ((x > 0 && d[i - 1]) || (x < w - 1 && d[i + 1]) || (y > 0 && d[i - w]) || (y < h - 1 && d[i + w])) mark.push(i);
+  }
+  for (const i of mark) d[i] = ink;
+  for (let i = 0; i < d.length; i++) if (d[i]) fb[i] = d[i];
+  T = FB;
+}
+function blit(L, ox = 0, oy = 0, wrap = false) {
+  ox = Math.round(ox); oy = Math.round(oy);
+  for (let y = 0; y < VH; y++) {
+    const sy = y + oy; if (sy < 0 || sy >= L.h) continue;
+    const row = sy * L.w, out = y * VW;
+    for (let x = 0; x < VW; x++) {
+      let sx = x + ox;
+      if (wrap) sx = ((sx % L.w) + L.w) % L.w; else if (sx < 0 || sx >= L.w) continue;
+      const v = L.d[row + sx]; if (v) fb[out + x] = v;
+    }
+  }
+}
+
+// ----- Осветление по рампам: каждый индекс → следующий светлее в своей рампе -----
+const LIGHTEN = new Uint8Array(256).map((_, i) => i);
+for (const r of [SKY, TF, TM, TN, TX, GR, LF, TR, DT, ST, ST2, CL, CL2, SKIN, HAIR, DRESS, DR, BELLY, WING, HORN, SASH, GOLD, range(EX, 4)])
+  for (let i = 0; i + 1 < r.length; i++) LIGHTEN[r[i]] = r[i + 1];
+// мягкие лучи света: диагональные полосы, внутри которых пиксели светлеют (с дизерингом по краям)
+function shafts(ox, period, width, yMax, strength, slope = .55, mask = null) {
+  for (let y = 0; y < yMax; y++) for (let x = 0; x < VW; x++) {
+    const p = (((x + ox) * slope + y) % period + period) % period;
+    if (p > width) continue;
+    const edge = Math.sin(p / width * PI), m = mask ? mask(x, y) : 1;
+    const k = edge * strength * m * (1 - y / (yMax * 1.4)), d = bay(x, y);
+    if (k > d) { const i = y * VW + x; fb[i] = LIGHTEN[fb[i]]; if (k > d + .55) fb[i] = LIGHTEN[fb[i]]; }
+  }
+}
+
+// =====================================================================
+//  Строительные блоки фонов
+// =====================================================================
+function skyGrad(y0, y1, ramp) {
+  for (let y = Math.max(0, y0); y < Math.min(T.h, y1); y++) { const f = (y - y0) / (y1 - y0); span(y, 0, T.w, (x, yy) => rampAt(ramp, f, x, yy)); }
+}
+function starField(n, maxY, seed) {
+  for (let i = 0; i < n; i++) {
+    const x = Math.floor(hash2(i, seed) * T.w), y = Math.floor(hash2(i, seed + 1) * maxY), c = STAR + (i & 7);
+    px(x, y, c);
+    if (hash2(i, seed + 2) > .92) { px(x + 1, y, STAR + ((i + 3) & 7)); px(x - 1, y, STAR + ((i + 3) & 7)); px(x, y + 1, STAR + ((i + 3) & 7)); px(x, y - 1, STAR + ((i + 3) & 7)); }
+  }
+}
+function glowAround(cx, cy, r0, r1, add, maxIdx, minIdx = 0, pow = 1.4) {
+  for (let y = Math.floor(cy - r1); y <= cy + r1; y++) for (let x = Math.floor(cx - r1); x <= cx + r1; x++) {
+    const d = Math.hypot(x + .5 - cx, y + .5 - cy); if (d < r0 || d > r1) continue;
+    const k = Math.pow(1 - (d - r0) / (r1 - r0), pow), v = get(x, y);
+    if (v >= minIdx && v < maxIdx && k > bay(x, y)) px(x, y, Math.min(maxIdx, v + add));
+  }
+}
+function disc(cx, cy, r, c) { ellipse(cx, cy, r, r, c); }
+function mountain(rf, ramp, o = {}) {
+  const { light = 1, tex = .5, fade = .004, x0 = 0, x1 = T.w, yMax = T.h, seed = 0, snow = 0, bias = 0 } = o;
+  for (let x = x0; x < x1; x++) {
+    const r = rf(x), sl = rf(x + 1) - rf(x - 1);
+    for (let y = Math.max(0, Math.floor(r)); y < yMax; y++) {
+      const dd = y - r;
+      let f = .5 + bias + clamp(sl * light * .22, -.35, .35) + (fbm(x * .11 + seed, y * .045, 3) - .5) * tex - dd * fade;
+      if (snow && dd < snow * (.5 + vnoise(x * .3, seed))) f = .97;
+      px(x, y, rampAt(ramp, f, x, y));
+    }
+  }
+}
+function cloud(cx, cy, w, h, ramp, seed, o = {}) {
+  const { below = false, thr = .3, flat = .6 } = o;
+  for (let y = Math.floor(cy - h); y < cy + h; y++) for (let x = Math.floor(cx - w); x < cx + w; x++) {
+    const u = (x - cx) / w, v = (y - cy) / h;
+    const n = fbm(x * .05 + seed, y * .1 + seed, 4);
+    const m = n - (u * u + v * v) * .55 - (v > 0 ? v * flat : 0);
+    if (m > thr) {
+      const sh = below ? (v * .5 + .5) : (.55 - v * .5);
+      px(x, y, rampAt(ramp, clamp(sh * .55 + (m - thr) * 1.8 + (n - .5) * .3), x, y));
+    }
+  }
+}
+function sea(y0, y1, sunX, reflW, seed = 0) {
+  for (let y = y0; y < y1; y++) {
+    const dep = (y - y0) / (y1 - y0);
+    for (let x = 0; x < T.w; x++) {
+      const n = vnoise(x * .045 / (.2 + dep) + seed, y * .8 + seed);
+      const band = (Math.floor(n * 9 + y * .45)) & 7;
+      let c = WA + band;
+      if (sunX != null) { const rw = (1.5 + dep * reflW) * (.35 + vnoise(x * .2, y * 1.9)); if (Math.abs(x - sunX) < rw) c = WB + band; }
+      T.d[y * T.w + x] = c;
+    }
+  }
+}
+function waterfall(x0, x1, y0, y1, spread = .08) {
+  for (let y = y0; y < y1; y++) {
+    const k = y - y0, a = x0 - k * spread, b = x1 + k * spread;
+    for (let x = Math.floor(a); x < b; x++) px(x, y, FALL + ((y + Math.floor(hash2(x, 77) * 8)) & 7));
+  }
+}
+function foam(cx, cy, rx, ry, seed = 0) {
+  for (let y = Math.floor(cy - ry); y < cy + ry; y++) for (let x = Math.floor(cx - rx); x < cx + rx; x++) {
+    const d = Math.hypot((x - cx) / rx, (y - cy) / ry); if (d > 1) continue;
+    if ((1 - d) * 1.4 * (.5 + vnoise(x * .4 + seed, y * .4)) > bay(x, y)) px(x, y, FALL + ((x * 3 + y) & 7));
+  }
+}
+function pine(cx, by, h, w, ramp, o = {}) {
+  const tiers = o.tiers || 4;
+  for (let i = 0; i < tiers; i++) {
+    const tt = i / tiers, top = by - h + tt * h * .55, bot = top + h * .5, hw = w * (.45 + tt * .6);
+    for (let y = Math.floor(top); y < bot; y++) {
+      const k = (y - top) / (bot - top), half = hw * k;
+      span(y, cx - half, cx + half + .5, (x, yy) => rampAt(ramp, .45 + (cx - x) / (hw + 1) * .35 * (o.lx || 1) + (o.bias || 0) - k * .2 + (hash2(x, yy) - .5) * .25, x, yy));
+    }
+  }
+  if (o.trunk) rect(cx - 1, by - h * .12, 2, h * .12, o.trunk);
+}
+function flame(cx, by, h, w, t, seed = 0) {
+  for (let r = 0; r < h; r++) {
+    const k = r / h, hw = w * Math.pow(1 - k, .75) * (.8 + .2 * Math.sin(t * 13 + r * .7 + seed));
+    const sway = Math.sin(t * 6 + r * .35 + seed) * k * 2.2, y = by - r;
+    for (let x = Math.floor(cx - hw + sway); x <= cx + hw + sway; x++) {
+      const dx = Math.abs(x + .5 - (cx + sway)) / (hw + .01);
+      if (k > .55 && hash2(x + Math.floor(t * 18), r + seed * 9) < .25) continue;
+      const heat = (1 - k * .9) * (1 - dx * .85);
+      px(x, y, FLAME + Math.min(3, Math.floor(heat * 3.6 + bay(x, y) * .7)));
+    }
+  }
+}
+function warmGlow(cx, cy, r, t, amt = .5) {
+  const fl = .85 + .15 * Math.sin(t * 9) * Math.sin(t * 13.7);
+  for (let y = Math.floor(cy - r); y <= cy + r; y++) for (let x = Math.floor(cx - r); x <= cx + r; x++) {
+    const d = Math.hypot(x + .5 - cx, y + .5 - cy) / (r * fl); if (d >= 1) continue;
+    const k = (1 - d) * (1 - d) * amt * 2;
+    if (k > bay(x, y) + .02) px(x, y, WARM + Math.min(3, Math.floor((1 - d) * 4 * .999)));
+  }
+}
+
+// =====================================================================
+//  Персонажи
+// =====================================================================
+function princess(x, y, s, o = {}) {
+  const saved = O;
+  if (!o.inSprite) beginSprite();
+  O = { x: Math.round(x), y: Math.round(y), s, f: o.dir || 1 };
+  const t = o.t || 0, pose = o.pose || 'stand', wind = o.wind || 0;
+  const sit = pose === 'sit' || pose === 'ride';
+  if (pose === 'walk') O.y -= Math.abs(Math.sin(o.walk || 0)) * .9 * s;
+  const hw = Math.sin(t * 2.6) * .7 + wind;
+  // волосы за спиной
+  const hb = -4.2 - hw * 1.6;
+  Pg([[-1, -27.5], [-4.6, -25], [hb - 1.2, -18 + (sit ? 1 : 0)], [hb - .6 - hw, -11.5 + (sit ? 2 : 0)], [hb + 2.2, -12 + (sit ? 2 : 0)], [-1.4, -16], [1, -21]], HAIR);
+  // дальняя рука
+  if (o.arm === 'lean' || o.arm === 'hug') Ch([[-.8, -17.5], [4, -15.8], [7.4, -16.4]], 1.05, .9, [3, 3]);
+  // платье
+  if (!sit) {
+    const sw = (pose === 'walk' ? Math.sin(o.walk) * 1.3 : 0) + hw * .4;
+    if (pose === 'walk') { const ph = Math.sin(o.walk); E(-1.8 + ph * 2.4, -.2, 1.7, .9, MOUTH); E(1.8 - ph * 2.4, -.2, 1.7, .9, MOUTH); }
+    Pg([[-2.7, -15], [2.7, -15], [7.2 + sw, -.6], [4.8 + sw, .4], [sw, 0], [-4.8 + sw, .4], [-7.2 + sw, -.6]], DRESS);
+    for (const fx of [-3.5, 0, 3.5]) Ln(fx * .3, -13, fx + sw * .8, -.6, 9);
+  } else {
+    Pg([[-3, -15], [2.7, -15], [4.6, -8], [9.4, -6.6], [9.6, -3.6], [-4.4, -3.6], [-5.2, -8]], DRESS);
+    E(9.2, -3.6, 1.5, .9, MOUTH);
+  }
+  E(0, -16.6, 3, 3.6, DRESS);
+  Pg([[-3, -14.4], [3, -14.4], [3, -13.1], [-3, -13.1]], SASH);
+  // шея и голова
+  Pg([[-.8, -21], [.9, -21], [.9, -19], [-.8, -19]], SKIN);
+  E(.3, -23.6, 4.1, 4.3, SKIN);
+  E(-.7, -25.5, 4.4, 2.9, HAIR);
+  Pg([[-4.4, -25.4], [-1.7, -25.4], [-2.1, -19.2], [-4.8, -20]], HAIR);
+  E(1.9, -23, 2.6, 2.3, SKIN);
+  Pg([[-2.6, -27.4], [-2.9, -29.6], [-1.4, -28.4], [0, -30.4], [1.4, -28.4], [2.7, -29.6], [2.6, -27.4]], GOLD);
+  // лицо
+  const ex = 2.2, ey = -23.6;
+  if (o.eyes === 'closed' || (o.blink || 0) > .5) Ln(ex - .6, ey, ex + .6, ey, EYE);
+  else if (o.eyes === 'happy') { Px(ex - .7, ey, EYE); Px(ex, ey - .7, EYE); Px(ex + .7, ey, EYE); }
+  else {
+    const look = o.lookUp ? -.8 : 0;
+    E(ex, ey + look * .5, .6, .9, EYE);
+    if (s >= 2) { Px(ex + .3, ey - .5 + look * .5, WHITE); }
+  }
+  Px(3.1, -22.1, 10);
+  if ((o.talk || 0) > .15) E(3.1, -21.4, .45, .25 + o.talk * .5, MOUTH);
+  // ближняя рука
+  const a = o.arm || 'down';
+  if (a === 'down') Ch([[1.2, -17.6], [2.2, -14.6], [2.6, -12.2]], 1.05, .9, SKIN);
+  else if (a === 'lantern') {
+    Ch([[1.2, -17.6], [3.6, -14.6], [5.6, -15]], 1.05, .9, SKIN);
+    Ln(6.1, -15.2, 6.1, -13.6, METAL);
+    Pg([[5, -13.6], [7.2, -13.6], [7.2, -10.2], [5, -10.2]], LGLASS);
+    Pg([[4.8, -13.9], [7.4, -13.9], [7.4, -13.2], [4.8, -13.2]], METAL);
+    Pg([[4.8, -10.4], [7.4, -10.4], [7.4, -9.7], [4.8, -9.7]], METAL);
+  } else if (a === 'wave') {
+    const wy = Math.sin(t * 12) * .9;
+    Ch([[1.2, -17.6], [3.8, -21.6], [4.4 + wy * .4, -26 + wy]], 1.05, .9, SKIN);
+  } else if (a === 'lean' || a === 'hug') Ch([[1.2, -17.6], [5, -15.4], [8.4, -16]], 1.05, .9, SKIN);
+  else if (a === 'reach') Ch([[1.2, -17.6], [5, -19.4], [8.4, -21]], 1.05, .9, SKIN);
+  else if (a === 'ride') Ch([[1.2, -17.6], [4.6, -15], [7.4, -15.6]], 1.05, .9, SKIN);
+  if (!o.inSprite) endSprite();
+  O = saved;
+}
+
+function wingPts(S, lift, len = 1) {
+  const [a, b] = S;
+  return {
+    elbow: [a + 10 * len, b - 26 * lift - 6], tip: [a + 34 * len, b - 60 * lift + 2], f2: [a + 52 * len, b - 36 * lift + 10],
+    f3: [a + 60 * len, b - 12 * lift + 16], m1: [a + 32 * len, b - 26 * lift + 12], m2: [a + 46 * len, b - 9 * lift + 18], back: [a + 30 * len, b + 8],
+  };
+}
+function drawWing(S, lift, col, bone, edge) {
+  const w = wingPts(S, lift);
+  Pg([S, w.elbow, w.tip, w.m1, w.f2, w.m2, w.f3, w.back], col, edge);
+  Ln(S[0], S[1], w.elbow[0], w.elbow[1], bone);
+  Ln(w.elbow[0], w.elbow[1], w.tip[0], w.tip[1], bone);
+  Ln(w.elbow[0], w.elbow[1], w.f2[0], w.f2[1], bone);
+  Ln(w.elbow[0], w.elbow[1], w.f3[0], w.f3[1], bone);
+  Pg([[w.elbow[0] - 1, w.elbow[1] - 1], [w.elbow[0] - 3, w.elbow[1] - 5], [w.elbow[0] + 1, w.elbow[1] - 2]], HORN);
+}
+function dragon(x, y, s, o = {}) {
+  beginSprite(); O = { x: Math.round(x), y: Math.round(y), s, f: o.flip ? -1 : 1 };
+  const t = o.t || 0, hu = o.headUp ?? 1, mo = o.mouth || 0, wing = o.wing || 0;
+  const fly = o.pose === 'fly', rest = o.pose === 'rest';
+  const br = fly ? 0 : Math.sin(t * 1.7) * .8;
+  const hx = fly ? -64 : rest ? -56 : lerp(-46, -40, hu), hy = fly ? -46 + Math.sin(t * 3.5) * 1.5 : rest ? -13 + br * .4 : lerp(-16, -84, hu) + (o.tilt || 0);
+  const by = rest ? 7 : 0; // лёжа тело ниже к земле
+  const wag = Math.sin(t * (o.wagSpeed || 1.4)) * (o.wag ?? 4);
+  const flap = fly ? Math.sin(t * 7) : wing;
+
+  // хвост
+  const tail = fly ? bez([40, -32], [84, -30 + wag], [124, -40 - wag], 22)
+    : rest ? bez([40, -10], [84, 0], [116, -8 + wag * .4], 22)
+    : bez([38, -15], [84, 2], [108, -18 + wag * .6], 22);
+  {
+    for (let i = 3; i < tail.length - 2; i += 3) { const [tx, ty] = tail[i], r = lerp(9, 2, i / tail.length); Pg([[tx - 2, ty - r + 1], [tx + 2, ty - r + 1], [tx + 1, ty - r - 3.5]], HORN, INK); }
+    Ch(tail, 9.5, 2, DR, INK);
+    const [ex, ey] = tail[tail.length - 1];
+    Pg([[ex - 1, ey - 1], [ex + 5, ey - 7], [ex + 7, ey + 1], [ex + 2, ey + 3]], WING, INK);
+  }
+  // дальнее крыло
+  if (fly || wing > .12) drawWing([2, -50], fly ? Math.sin(t * 7 - .35) * .9 : wing * .9, 22, 17, INK);
+  // дальние лапы
+  if (!fly && !rest) { E(-12, -9, 6, 9, [17, 17], INK); E(-16, -2, 7, 2.6, [17, 17], INK); E(26, -9, 9, 8, [17, 17], INK); }
+  // шипы на спине и шее
+  const neck = fly ? bez([-8, -40], [-36, -44], [hx + 8, hy + 2], 14) : rest ? bez([-6, -32], [-30, -30], [hx + 9, hy + 2], 14) : bez([-6, -42], [-22, lerp(-48, -70, hu)], [hx + 8, hy + 3], 14);
+  for (let i = 0; i < 6; i++) {
+    const a = PI * (1.12 + i * .12), sx = 14 + Math.cos(a) * 32, sy = -30 + by - br + Math.sin(a) * (21 - by * .4);
+    Pg([[sx - 3, sy + 2], [sx + 3, sy + 2], [sx + 2.5, sy - 6]], HORN, INK);
+  }
+  for (let i = 2; i < neck.length - 2; i += 3) { const [nx, ny] = neck[i]; Pg([[nx + 1, ny - 7], [nx + 6, ny - 6], [nx + 6, ny - 12]], HORN, INK); }
+  // тело
+  E(14, -30 + by - br * .5, 35, 22 - by * .4 + br * .4, DR, INK);
+  if (!rest) E(2, -22 - br * .3, 21, 14, (xx, yy) => (yy % 3 === 0) ? 20 : rampAt(BELLY, .7 - (yy - Y(-22)) / (14 * O.s) * .3, xx, yy));
+  // ближняя задняя лапа
+  if (fly) { E(34, -26, 10, 8, DR, INK); E(46, -21, 6, 3, DR, INK); }
+  else if (!rest) {
+    E(30, -13, 13, 11, DR, INK); E(23, -2.5, 10, 3, DR, INK);
+    for (const cx of [14, 17.5, 21]) Pg([[cx, -2], [cx - 2.5, 0], [cx + 1, 0]], HORN);
+  }
+  // шея
+  Ch(neck, 10.5, 7.5, DR, INK);
+  const nb = neck.map(([a, b]) => [a - 4, b + 4]).slice(0, -2);
+  Ch(nb, 5, 3.5, BELLY);
+  // ближняя передняя лапа
+  if (fly) { E(-22, -24, 5, 7, DR, INK); }
+  else if (rest) { E(-22, -6, 10, 6, DR, INK); E(-40, -2.5, 10, 3.2, DR, INK); for (const cx of [-50, -46.5, -43]) Pg([[cx, -2], [cx - 2.5, 0], [cx + 1, 0]], HORN); }
+  else { E(-16, -12, 7, 11, DR, INK); E(-21, -2.5, 8.5, 3, DR, INK); for (const cx of [-28, -24.5, -21]) Pg([[cx, -2], [cx - 2.5, 0], [cx + 1, 0]], HORN); }
+  // голова
+  Ch([[hx + 6, hy - 6], [hx + 16, hy - 14], [hx + 27, hy - 14]], 2.6, .8, HORN.map(() => 24), INK);
+  E(hx, hy, 13, 10.5, DR, INK);
+  const jawY = hy + 6 + mo * 9;
+  if (mo > .05) {
+    Pg([[hx - 27, hy + 3], [hx + 3, hy + 1], [hx + 3, jawY + 2], [hx - 24, jawY + 1]], MOUTH);
+    for (let k = 0; k < 4; k++) { const tx = hx - 24 + k * 5; Pg([[tx, hy + 4], [tx + 2.4, hy + 4], [tx + 1.2, hy + 6.5]], TOOTH); Pg([[tx + 1, jawY], [tx + 3.4, jawY], [tx + 2.2, jawY - 2.4]], TOOTH); }
+  }
+  E(hx - 13, jawY + 1.5, 12.5, 3.4, DR, INK);
+  E(hx - 15, hy + 1, 14, 7.2, DR, INK);
+  E(hx - 14, hy + 5, 11, 2.2, BELLY);
+  Pg([[hx - 9, hy - 7.5], [hx + 4, hy - 10.5], [hx + 2, hy - 5]], [17, 17]);
+  Ch([[hx + 4, hy - 7], [hx + 15, hy - 17], [hx + 29, hy - 19]], 3.2, 1, HORN, INK);
+  Pg([[hx + 8, hy + 1], [hx + 20, hy + 3], [hx + 10, hy + 7]], WING, INK);
+  // глаз
+  const ex = hx - 5, ey = hy - 3, eyes = o.eyes || 'open';
+  if (eyes === 'closed' || (o.blink || 0) > .5) Ln(ex - 3, ey + .5, ex + 3, ey + .5, INK);
+  else if (eyes === 'happy') { Ln(ex - 3, ey + 1, ex, ey - 1.5, INK); Ln(ex, ey - 1.5, ex + 3, ey + 1, INK); }
+  else {
+    E(ex, ey, 3.3, 2.9, DEYE, INK);
+    E(ex - .6 + (o.look || 0), ey, .7, 2.3, INK);
+    Px(ex + .8, ey - 1.5, WHITE);
+    if (eyes === 'sad') { Pg([[ex - 4.4, ey - 3.8], [ex + 4.4, ey - 3.8], [ex + 4.4, ey - .4], [ex - 4.4, ey - 1.6]], 16); Ln(ex - 4, ey - 1.4, ex + 4, ey - .2, INK); }
+  }
+  Px(hx - 26, hy - 1, INK); Px(hx - 25, hy - 1, INK);
+  // наездник и ближнее крыло
+  if (o.rider) o.rider();
+  if (fly || wing > .12) drawWing([12, -48], fly ? flap : wing, WING, 17, INK);
+  else if (!rest) { Pg([[2, -44], [20, -64], [46, -56], [54, -38], [30, -34]], WING, INK); Ln(20, -64, 30, -36, 17); Ln(46, -56, 38, -36, 17); }
+  else { Pg([[2, -36], [22, -52], [48, -46], [54, -28], [28, -26]], WING, INK); Ln(22, -52, 30, -28, 17); Ln(48, -46, 40, -28, 17); }
+  endSprite();
+  return { head: [X(hx - 26), Y(hy - 1)], mouth: [X(hx - 26), Y(hy + 4)] };
+}
+
+// =====================================================================
+//  Сцены: палитры, фоны (кэшируются), отрисовка кадра
+// =====================================================================
+const SCENES = [];
+function scene(def) { SCENES.push(def); return def; }
+
+// ---------- 1. Замок на утёсе на закате ----------
+scene({
+  id: 'castle', s: 0, e: 22.5, tint: [1, 1, 1], light: { x: .7, y: -.6 },
+  cycles: [[WA, 8, 1.1], [WB, 8, 2.6], [FALL, 8, -10], [STAR, 8, .7], [GLOW, 8, 5]],
+  pal: P => {
+    keys(P, 32, 16, ['#1a1240', '#2e1a58', '#55246c', '#8a3474', '#c44c70', '#e8705a', '#f8a058', '#ffd27a', '#ffeaa8']);
+    list(P, STAR, ['#1c1440', '#1c1440', '#3a3070', '#8a80c0', '#ffffff', '#8a80c0', '#3a3070', '#1c1440']);
+    list(P, EX, ['#fff8d8', '#ffe898', '#ffc870', '#3a1830', '#5a2038', '#82304a', '#b04a5a', '#e0707a']);
+    list(P, WA, ['#2a1c54', '#36246a', '#46307a', '#583a86', '#7a4a8c', '#c8647c', '#583a86', '#36246a']);
+    list(P, WB, ['#a04a5a', '#e07a50', '#ffb050', '#ffe08a', '#fff6d0', '#ffb050', '#e07a50', '#c06050']);
+    list(P, FALL, ['#c8b8e8', '#ffffff', '#e0d8f8', '#a898d0', '#8070b0', '#c8b8e8', '#f0e8ff', '#9888c8']);
+    list(P, GLOW, ['#ffc050', '#ffd870', '#ffb040', '#ffe090', '#ffc860', '#ffa030', '#ffd060', '#ffe8a0']);
+    keys(P, 160, 8, ['#4a2a6a', '#7a3a7a', '#b04a72', '#e06a6a', '#f09a70', '#ffc890', '#ffe8b8']);
+    keys(P, 112, 4, ['#4a2a68', '#5a3274', '#6c3c7e', '#82488a']);
+    keys(P, 144, 8, ['#160c22', '#241432', '#361c40', '#4c264c', '#683454', '#8e465c', '#bc5e62', '#e8846a']);
+    keys(P, 152, 8, ['#221430', '#342040', '#4a2c50', '#62385e', '#7e4868', '#a05e70', '#c87a78', '#eea084']);
+    keys(P, 128, 4, ['#0e0816', '#1a0e24', '#2a1634', '#3e2044']);
+  },
+  build() {
+    const L0 = Buf(320, 180); T = L0;
+    skyGrad(0, 114, SKY);
+    starField(70, 46, 3);
+    cloud(70, 44, 80, 7, CL, 11, { below: true, thr: .34, flat: .2 });
+    cloud(170, 66, 100, 7, CL, 23, { below: true, thr: .36, flat: .2 });
+    cloud(290, 34, 70, 6, CL, 37, { below: true, thr: .36, flat: .2 });
+    cloud(240, 88, 110, 5, CL, 51, { below: true, thr: .38, flat: .1 });
+    glowAround(236, 100, 13, 46, 2, 47, 32, 1.6);
+    disc(236, 100, 14, EX + 1); disc(236, 99, 12, EX);
+    sea(114, 180, 236, 34);
+    span(114, 0, 320, (x, y) => (bay(x, y) > .4 ? SKY[15] : WA + 5));
+    const L1 = Buf(360, 180); T = L1;
+    mountain(x => 114 - Math.max(0, fbm(x * .013, 5, 5) * 85 - 24) * sstep(250, 300, x + 40) - 1, TF, { light: 1, tex: .35, fade: -.004, yMax: 114 });
+    const L2 = Buf(380, 180); T = L2;
+    const cliff = [[0, 180], [0, 96], [16, 92], [40, 94], [70, 90], [104, 93], [134, 96], [148, 108], [156, 128], [164, 152], [170, 180]];
+    poly(cliff, (x, y) => {
+      let f = .3 + x / 170 * .45 + (fbm(x * .15, y * .06, 4) - .5) * .7 - (y - 95) / 85 * .25;
+      if (fbm(x * .35, y * .02, 2) > .68) f -= .3;
+      return rampAt(ST, f, x, y);
+    });
+    for (let x = 0; x < 160; x++) for (let y = 89; y < 98; y++) if (get(x, y) && !get(x, y - 1) && hash2(x, y) > .3) { px(x, y, GR[3]); if (hash2(x, 2) > .6) px(x, y - 1, GR[2]); }
+    waterfall(121, 129, 97, 180, .07);
+    foam(126, 175, 20, 6, 3);
+    rect(119, 93, 12, 5, ST[0]);
+    // стены и башни
+    const tower = (tx, tw, top, roof, base = 95) => {
+      rect(tx, top, tw, base - top, (x, y) => {
+        let f = .25 + (x - tx) / tw * .6 + (vnoise(x * .5, y * .5) - .5) * .2;
+        if (y % 5 === 0 || ((x + Math.floor(y / 5) * 3) % 7 === 0 && y % 5 < 4 && hash2(x, y) > .7)) f -= .25;
+        return rampAt(ST2, f, x, y);
+      });
+      poly([[tx - 2, top], [tx + tw / 2, top - roof], [tx + tw + 2, top]], (x, y) => rampAt([EX + 3, EX + 4, EX + 5, EX + 6, EX + 7], .25 + (x - tx) / tw * .7, x, y));
+      for (let wy = top + 5; wy < base - 8; wy += 9) for (let wx = tx + 3; wx < tx + tw - 3; wx += 6) if (hash2(wx, wy) > .35) rect(wx, wy, 2, 3, GLOW + (Math.floor(hash2(wx, wy + 1) * 8)));
+      return [tx + tw / 2, top - roof];
+    };
+    rect(18, 72, 104, 23, (x, y) => rampAt(ST2, .35 + (x - 18) / 104 * .35 + (y % 4 === 0 ? -.2 : 0), x, y));
+    for (let x = 18; x < 122; x += 6) rect(x, 69, 3, 3, ST2[3]);
+    const flags = [tower(24, 18, 42, 18), tower(56, 26, 30, 24), tower(96, 16, 50, 15), tower(84, 10, 58, 11)];
+    rect(66, 82, 7, 13, ST[0]); poly([[66, 82], [69.5, 78], [73, 82]], ST[0]);
+    const L3 = Buf(400, 180); T = L3;
+    poly([[250, 180], [276, 166], [300, 160], [330, 150], [370, 152], [400, 147], [400, 180]], (x, y) => rampAt(GR, .3 + (fbm(x * .2, y * .1) - .5) * .6 - (y - 150) / 60, x, y));
+    for (let i = 0; i < 40; i++) { const gx = 262 + hash2(i, 9) * 138, gy = 168 - (gx - 262) * .14 + hash2(i, 8) * 6; line(gx, gy, gx + (hash2(i, 7) - .5) * 4, gy - 3 - hash2(i, 6) * 5, GR[3]); if (hash2(i, 5) > .7) px(gx + 1, gy - 6, i % 2 ? 10 : 12); }
+    this.L = [L0, L1, L2, L3]; this.flags = flags;
+  },
+  draw(lt, t) {
+    const cam = lt * 2;
+    blit(this.L[0]); blit(this.L[1], cam * .25); blit(this.L[2], cam * .6);
+    T = FB;
+    for (const [fx, fy] of this.flags) {
+      const sx = fx - cam * .6; line(sx, fy, sx, fy - 6, INK);
+      for (let i = 1; i <= 6; i++) { const wy = Math.sin(t * 6 - i * .9) * 1.2; px(sx + i, fy - 6 + wy, 8); px(sx + i, fy - 5 + wy, i < 5 ? 9 : 8); }
+    }
+    for (let i = 0; i < 5; i++) {
+      const bx = ((lt * (12 + i * 3) + i * 70) % 380) - 30, by = 52 + i * 7 + Math.sin(lt * 1.3 + i) * 4, up = Math.sin(t * 9 + i * 2) > 0;
+      px(bx, by, INK); px(bx - 1, by + (up ? -1 : 1) * 0, INK); px(bx + 1, by, INK); px(bx - 2, by + (up ? -1 : 1), INK); px(bx + 2, by + (up ? -1 : 1), INK);
+    }
+    blit(this.L[3], cam);
+  },
+  overlay(lt) {
+    const a = Math.min(prog(.6, 1.8, lt), 1 - prog(3.8, 4.8, lt));
+    if (a > 0) { pixText('Принцесса и Дракон', W / 2, 150, 76, a, '#ffe08a'); pixText('пиксельная сказка', W / 2, 225, 34, a, '#f3eaff'); }
+  },
+});
+
+// ---------- 2. Ночь, балкон, огонёк на горе ----------
+scene({
+  id: 'balcony', s: 22.5, e: 32.5, tint: [.66, .68, .95], light: { x: .7, y: -.6 },
+  cycles: [[STAR, 8, .8], [WA, 8, .9], [GLOW, 8, 6]],
+  pal: P => {
+    keys(P, 32, 16, ['#04051a', '#0a0c2a', '#121640', '#1a2050', '#262b60', '#33366c', '#423f74']);
+    list(P, STAR, ['#141838', '#141838', '#40488a', '#a0a8e0', '#ffffff', '#a0a8e0', '#40488a', '#141838']);
+    list(P, EX, ['#fffbe8', '#e0dcc8', '#b8b4b0', '#8a8aa0', '#000000', '#000000', '#000000', '#000000']);
+    keys(P, 112, 4, ['#0a0c22', '#10132c', '#171a38', '#202446']);
+    keys(P, 116, 4, ['#060814', '#0a0e1e', '#0e1428', '#141a32']);
+    list(P, WA, ['#10183a', '#16204a', '#1e2a5a', '#2a3a70', '#5a6aa0', '#c8d0f0', '#2a3a70', '#16204a']);
+    keys(P, 152, 8, ['#0c0c18', '#141626', '#1e2034', '#2a2a42', '#383650', '#4a445a', '#665460', '#8a6a62']);
+    list(P, WARM, ['#3a2030', '#5a2a2a', '#8a3a20', '#c05a20']);
+    list(P, GLOW, ['#ffc050', '#ffd870', '#ffb040', '#ffe090', '#ffc860', '#ffa030', '#ffd060', '#ffe8a0']);
+  },
+  build() {
+    const L0 = Buf(320, 180); T = L0;
+    skyGrad(0, 125, SKY); starField(110, 110, 7);
+    glowAround(62, 34, 11, 26, 2, 47, 32, 1.5);
+    disc(62, 34, 11, EX); for (const [cx, cy, r] of [[58, 31, 2], [64, 38, 2.5], [66, 30, 1.5]]) disc(cx, cy, r, EX + 1);
+    ellipse(67, 31, 10, 10, (x, y) => rampAt(SKY, y / 125, x, y));
+    const rf = x => 122 - fbm(x * .02, 9, 4) * 28 - 54 * Math.exp(-Math.pow((x - 228) / 34, 2));
+    mountain(rf, TF, { light: -1, tex: .3, fade: .002 });
+    this.peak = [228, Math.floor(rf(228))];
+    for (let x = 0; x < 320; x++) { const r = 130 + Math.sin(x * .05) * 3 + fbm(x * .1, 2) * 6; for (let y = Math.floor(r); y < 180; y++) px(x, y, rampAt(TM, .4 + (fbm(x * .2, y * .2) - .5), x, y)); }
+    for (let i = 0; i < 46; i++) pine(hash2(i, 3) * 320, 136 + hash2(i, 4) * 10, 10 + hash2(i, 5) * 9, 4 + hash2(i, 6) * 3, TM, { bias: -.1 });
+    for (let y = 150; y < 180; y++) { const cx = 160 + Math.sin(y * .12) * 40 + (y - 150) * 1.5, w = 4 + (y - 150) * .6; for (let x = Math.floor(cx - w); x < cx + w; x++) px(x, y, WA + ((Math.floor(vnoise(x * .2, y) * 6) + y) & 7)); }
+    const L1 = Buf(320, 180); T = L1;
+    const stone = (x, y, base = .35) => {
+      const d = Math.hypot(x - 300, y - 72);
+      let f = base + Math.max(0, 1 - d / 120) * .55 + (vnoise(x * .4, y * .4) - .5) * .25;
+      if (y % 6 === 0 || ((x + Math.floor(y / 6) * 5) % 11 === 0)) f -= .22;
+      return rampAt(ST2, f, x, y);
+    };
+    rect(0, 0, 26, 180, (x, y) => stone(x, y, .12));
+    rect(290, 0, 30, 180, stone);
+    for (let x = 26; x < 290; x++) { const k = (x - 158) / 132, top = 26 - Math.sqrt(Math.max(0, 1 - k * k)) * 24; for (let y = 0; y < top; y++) px(x, y, stone(x, y, .15)); }
+    rect(20, 136, 280, 8, (x, y) => stone(x, y, .45 + (y === 136 ? .3 : 0)));
+    for (let bx = 32; bx < 290; bx += 16) for (let y = 144; y < 170; y++) { const k = (y - 144) / 26, hw = 2.5 + Math.sin(k * PI) * 2.5; span(y, bx - hw, bx + hw, (x, yy) => stone(x, yy, .3 + (x - bx) / hw * .2)); }
+    rect(20, 170, 280, 10, (x, y) => stone(x, y, .3));
+    rect(296, 76, 6, 3, INK); rect(298, 70, 3, 9, INK);
+    this.L = [L0, L1];
+  },
+  draw(lt, t) {
+    blit(this.L[0]);
+    const [fx, fy] = this.peak;
+    warmGlow(fx, fy - 2, 22, t, .5);
+    flame(fx, fy, 6, 2.2, t, 1);
+    princess(152, 181, 2.6, { dir: 1, pose: 'stand', arm: 'lean', t, wind: .6 + Math.sin(t * .8) * .3, blink: blinkAt(t), talk: mouthOf('p1', t), lookUp: true });
+    blit(this.L[1]);
+    warmGlow(299, 66, 26, t, .32);
+    flame(299, 70, 9, 3, t, 4);
+  },
+});
+
+// ---------- 3. Утро, путь через лес к водопаду ----------
+scene({
+  id: 'forest', s: 32.5, e: 49.5, tint: [1, .96, .92], light: { x: -.6, y: -.8 },
+  cycles: [[WA, 8, 1.6], [FALL, 8, -11], [RAY, 8, 2.2], [GLOW, 8, 6]],
+  pal: P => {
+    keys(P, 32, 16, ['#5070b8', '#6c86c8', '#9a98d4', '#c8a8d4', '#eab4c0', '#f8caae', '#ffe2b2', '#fff2cc']);
+    list(P, EX, ['#fff4d0', '#ffe4a8', '#ffd090', '#000000', '#1a3020', '#28482a', '#3e6830', '#6a9a3a']);
+    keys(P, 112, 4, ['#8a88c4', '#9a98cc', '#aca8d6', '#beb8e0']);
+    keys(P, 116, 4, ['#56689e', '#6476a8', '#7486b4', '#8898c0']);
+    keys(P, 132, 4, ['#244458', '#2e5664', '#3c6a6c', '#4e7e74']);
+    keys(P, 128, 4, ['#1c3a28', '#2c5a32', '#4a7a3a', '#86a844']);
+    keys(P, 136, 4, ['#2a1a1a', '#4a2e24', '#6a4630', '#8a6040']);
+    keys(P, 140, 4, ['#6a4a32', '#8a6a44', '#ac8a58', '#d4b07a']);
+    keys(P, 144, 8, ['#262838', '#34364a', '#44465a', '#56566a', '#6a687a', '#828088', '#9a969c', '#b8b0ae']);
+    list(P, WA, ['#2a5a8a', '#3a6aa0', '#4a7ab0', '#5a8ac0', '#7aa8d8', '#c0e0ff', '#5a8ac0', '#3a6aa0']);
+    list(P, FALL, ['#a8d0f0', '#ffffff', '#d0e8ff', '#88b8e0', '#6a9ad0', '#b8dcf8', '#f0f8ff', '#90c0e8']);
+    list(P, RAY, ['#fff0c0', '#ffe4a8', '#fff8e0', '#ffdc98', '#fff0c0', '#ffd890', '#fff8d8', '#ffe8b8']);
+    list(P, GLOW, ['#fff0a0', '#ffe070', '#fffad0', '#ffd060', '#fff0a0', '#ffc850', '#fff8c0', '#ffe080']);
+    keys(P, 160, 8, ['#c8a0c0', '#e0b4c4', '#f4cac8', '#ffe0d0', '#fff2e4']);
+  },
+  build() {
+    const L0 = Buf(320, 180); T = L0;
+    skyGrad(0, 140, SKY);
+    glowAround(60, 112, 10, 70, 2, 47, 32, 1.4);
+    cloud(150, 40, 70, 8, CL, 5, { thr: .36, flat: .3 }); cloud(270, 62, 60, 7, CL, 9, { thr: .36, flat: .3 });
+    const L1 = Buf(380, 180); T = L1;
+    mountain(x => 134 - fbm(x * .015, 21, 5) * 40 - 62 * Math.exp(-Math.pow((x - 300) / 40, 2)), TF, { light: -1, tex: .3, fade: -.002, snow: 5, seed: 3 });
+    px(300, 76, GLOW + 2); px(301, 76, GLOW + 4);
+    const L2 = Buf(500, 180); T = L2;
+    for (let x = 0; x < 500; x++) { const r = 130 + Math.sin(x * .03) * 6 + fbm(x * .05, 4) * 8; for (let y = Math.floor(r); y < 180; y++) px(x, y, rampAt(TM, .5 + (fbm(x * .1, y * .1) - .5) * .5, x, y)); }
+    for (let i = 0; i < 90; i++) { const x = hash2(i, 31) * 500; pine(x, 140 + hash2(i, 32) * 12, 18 + hash2(i, 33) * 16, 5 + hash2(i, 34) * 4, TM, { lx: 1, bias: .05 }); }
+    const L3 = Buf(640, 180); T = L3;
+    for (let i = 0; i < 26; i++) {
+      const x = i * 26 + hash2(i, 41) * 14, h = 90 + hash2(i, 42) * 50, by = 152;
+      if (i % 3 === 1) {
+        rect(x - 3, by - h * .6, 6, h * .6, (xx, yy) => rampAt(TR, .3 + (x - xx) / 6 * -.5 + (hash2(xx, yy >> 2) - .5) * .3, xx, yy));
+        for (let k = 0; k < 7; k++) { const cx = x + (hash2(i, k) - .5) * 30, cy = by - h * .6 - hash2(i, k + 9) * 34; ellipse(cx, cy, 14 + hash2(i, k + 3) * 8, 10 + hash2(i, k + 5) * 5, (xx, yy) => rampAt(LF, .5 + (cx - xx) / 20 * .4 + (cy - yy) / 14 * .3 + (vnoise(xx * .5, yy * .5) - .5) * .5, xx, yy)); }
+      } else pine(x, by + 4, h, 10 + hash2(i, 43) * 6, LF, { tiers: 6, trunk: TR[1], lx: 1 });
+    }
+    const L4 = Buf(760, 180); T = L4;
+    // скала с водопадом
+    poly([[560, 180], [580, 60], [610, 36], [660, 30], [720, 38], [760, 50], [760, 180]], (x, y) => rampAt(ST, .35 + (fbm(x * .12, y * .05) - .5) * .7 + (x - 560) / 200 * -.2 + (fbm(x * .4, y * .02, 2) > .66 ? -.3 : 0), x, y));
+    for (let x = 580; x < 760; x++) for (let y = 28; y < 70; y++) if (get(x, y) && !get(x, y - 2) && hash2(x, y) > .2) px(x, y - 1, GR[2 + (hash2(x, 1) > .5 ? 1 : 0)]);
+    waterfall(640, 668, 33, 152, .05);
+    for (let y = 136; y < 154; y++) span(y, 600, 720, (x, yy) => { const d = Math.hypot((x - 655) / 62, (yy - 146) / 9); return d < 1 ? WA + ((Math.floor(vnoise(x * .15, yy) * 7) + yy) & 7) : 0; });
+    foam(655, 140, 30, 7, 5);
+    // земля и тропа
+    for (let x = 0; x < 760; x++) {
+      const gtop = 147 + Math.sin(x * .05) * 2 + fbm(x * .08, 7) * 3, p0 = 153 + Math.sin(x * .013) * 2, p1 = p0 + 12;
+      for (let y = Math.floor(gtop); y < 180; y++) {
+        if (x > 600 && x < 712 && y < 154 && y > 136) continue;
+        if (y >= p0 && y < p1) px(x, y, rampAt(DT, .55 + (vnoise(x * .3, y * .5) - .5) * .7 - (y === Math.floor(p0) ? .3 : 0), x, y));
+        else px(x, y, rampAt(GR, .55 + (vnoise(x * .25, y * .4) - .5) * .7 - (y - gtop) * .01, x, y));
+      }
+    }
+    // ручей с мостиком
+    for (let y = 147; y < 180; y++) { const cx = 330 + (y - 147) * .6; for (let x = cx - 9; x < cx + 9; x++) px(x, y, WA + ((Math.floor(vnoise(x * .3, y * .2) * 6) + y) & 7)); }
+    rect(312, 152, 40, 4, TR[2]); for (let x = 312; x < 352; x += 4) px(x, 152, TR[0]);
+    rect(312, 156, 40, 2, TR[0]); rect(314, 146, 2, 10, TR[1]); rect(348, 146, 2, 10, TR[1]); rect(314, 146, 36, 1, TR[3]);
+    for (let i = 0; i < 160; i++) { const gx = hash2(i, 61) * 760, gy = 166 + hash2(i, 62) * 14; line(gx, gy, gx + (hash2(i, 63) - .5) * 4, gy - 2 - hash2(i, 64) * 6, GR[3]); if (hash2(i, 65) > .8) px(gx, gy - 7, [10, 12, 11][i % 3]); }
+    this.L = [L0, L1, L2, L3, L4];
+  },
+  draw(lt, t) {
+    const cam = eio(prog(0, 17, lt)) * .35 * 440 + prog(0, 17, lt) * .65 * 440;
+    blit(this.L[0]); blit(this.L[1], cam * .12); blit(this.L[2], cam * .3); blit(this.L[3], cam * .6); blit(this.L[4], cam);
+    shafts(cam * .6, 64, 20, 165, 1.25 + Math.sin(t * .8) * .12, .55, (x) => vnoise((x + cam * .6) * .02, 3) > .4 ? 1 : .35);
+    for (let i = 0; i < 18; i++) {
+      const fx = ((hash2(i, 5) * 360 - cam * .8 + Math.sin(t * .7 + i) * 10) % 340 + 340) % 340 - 10, fy = 90 + hash2(i, 6) * 60 + Math.sin(t * 1.3 + i * 2) * 6;
+      if (Math.sin(t * 3 + i) > -.3) px(fx, fy, GLOW + (i & 7));
+    }
+    princess(96 + lt * 1.2, 162, 1.25, { dir: 1, pose: 'walk', walk: t * 5.5, arm: 'lantern', t, wind: .2, blink: blinkAt(t) });
+  },
+});
+
+// ---------- 4. Пещера дракона ----------
+scene({
+  id: 'cave', s: 49.5, e: 100.5, tint: [1, .84, .76], light: { x: -.5, y: -.5 },
+  cycles: [[FIRE, 8, 3], [AUR, 8, 1.5], [GLOW, 8, 7], [RAY, 8, 1.4]],
+  pal: P => {
+    keys(P, 32, 16, ['#5a80c8', '#7a9ad6', '#a6c0e6', '#d8e6f6']);
+    keys(P, 112, 4, ['#8a9ac8', '#9aaad0', '#b0bcd8', '#c8d0e2']);
+    keys(P, 144, 8, ['#100810', '#1a0e1c', '#261426', '#341a30', '#46223a', '#5c2c40', '#783a44', '#9a4c44']);
+    keys(P, 152, 8, ['#08040a', '#120a12', '#1c101a', '#281620', '#361c26', '#4a242a', '#64302c', '#86402e']);
+    list(P, FIRE, ['#5a0a08', '#8a1a08', '#c03010', '#e85a10', '#ff8a20', '#ffc040', '#ff8a20', '#e85a10']);
+    list(P, AUR, ['#3ad0e0', '#5ae8ff', '#b0ffff', '#5ae8ff', '#3ad0e0', '#2aa0c0', '#2a80b0', '#2aa0c0']);
+    list(P, EX, ['#6a3a10', '#a87018', '#e8b030', '#fff0a0', '#000000', '#000000', '#000000', '#000000']);
+    list(P, GLOW, ['#ffe070', '#fff8c0', '#ffd040', '#ffffff', '#ffe070', '#ffc030', '#fff0a0', '#ffd860']);
+    list(P, RAY, ['#d8e0f0', '#c8d4ea', '#e8eef8', '#b8c8e4', '#d8e0f0', '#c0cce6', '#eef2fa', '#ccd8ee']);
+    list(P, WARM, ['#4a2026', '#6a2a24', '#9a4024', '#d0682a']);
+  },
+  build() {
+    const L0 = Buf(320, 180); T = L0;
+    for (let y = 0; y < 180; y++) for (let x = 0; x < 320; x++) {
+      let f = .2 + Math.pow(y / 180, 2) * .55 + (fbm(x * .06, y * .09, 4) - .5) * .7;
+      if (fbm(x * .2, y * .03, 2) > .66) f -= .25;
+      px(x, y, rampAt(ST, f, x, y));
+    }
+    // проём в своде с дневным небом
+    for (let y = 0; y < 46; y++) for (let x = 0; x < 120; x++) {
+      const d = Math.hypot((x - 58) / 46, (y - 14) / 24) + (fbm(x * .15, y * .15) - .5) * .35;
+      if (d < 1) px(x, y, y > 34 - (x - 58) * (x - 58) * .004 ? rampAt(TF, .5 + (vnoise(x * .2, y * .2) - .5), x, y) : rampAt(SKY, y / 40, x, y));
+    }
+    // луч света
+    for (let y = 20; y < 160; y++) { const k = (y - 20) / 140, a = 30 + k * 70, b = 86 + k * 70; for (let x = Math.floor(a); x < b; x++) { const v = get(x, y); if (v >= 144 && v < 151 && bay(x, y) < .55 * (1 - k * .5)) px(x, y, v + 1); } }
+    // сталактиты
+    for (let i = 0; i < 24; i++) { const x = 100 + hash2(i, 3) * 220, h = 8 + hash2(i, 4) * 26, w = 3 + hash2(i, 5) * 5; poly([[x - w, 0], [x + w, 0], [x + .5, h]], (xx, yy) => rampAt(ST, .25 + (x - xx) / w * .2 + yy / 180, xx, yy)); }
+    // кристаллы
+    for (const [cx, cy, n] of [[18, 108, 5], [296, 70, 6], [268, 126, 4], [140, 60, 3]]) {
+      glowAround(cx, cy, 2, 22, 1, 151, 144, 1.2);
+      for (let k = 0; k < n; k++) { const a = -PI / 2 + (k - n / 2) * .35, l = 8 + hash2(cx, k) * 9, bx = cx + (k - n / 2) * 3; poly([[bx - 2, cy], [bx + 2, cy], [bx + Math.cos(a) * l + 1, cy + Math.sin(a) * l], [bx + Math.cos(a) * l - 1, cy + Math.sin(a) * l]], (xx, yy) => AUR + ((xx + yy + k) & 7)); }
+    }
+    // сокровища
+    ellipse(262, 150, 64, 22, (x, y) => { const n = hash2(x, y), f = .45 + (262 - x) / 64 * -.1 + (150 - y) / 22 * .3 + (n - .5) * .5; return n > .97 ? GLOW + ((x * 7 + y) & 7) : rampAt([EX, EX + 1, EX + 2, EX + 3], f, x, y); });
+    for (const [gx, gy] of [[232, 136], [296, 140], [250, 130]]) { rect(gx - 2, gy - 6, 4, 6, EX + 2); rect(gx - 3, gy - 7, 6, 1, EX + 3); rect(gx - 1, gy, 2, 2, EX + 1); }
+    // пол и лава
+    for (let x = 0; x < 320; x++) {
+      const top = 146 + Math.sin(x * .07) * 2 + fbm(x * .1, 5) * 4;
+      for (let y = Math.floor(top); y < 165; y++) px(x, y, rampAt(ST, .55 + (vnoise(x * .3, y * .5) - .5) * .5 + (y - 150) / 30 + (y === Math.floor(top) ? .25 : 0), x, y));
+      const lt0 = 165 + Math.sin(x * .05) * 1.5;
+      for (let y = Math.floor(lt0); y < 180; y++) px(x, y, FIRE + ((Math.floor(x * .22 + vnoise(x * .08, y * .3) * 7) + y) & 7));
+    }
+    // пьедестал «огонька»
+    rect(31, 120, 14, 30, (x, y) => rampAt(ST2, .4 + (x - 31) / 14 * -.3 + (y % 5 === 0 ? -.2 : 0), x, y));
+    rect(27, 117, 22, 4, ST2[5]); rect(28, 147, 20, 4, ST2[3]);
+    const L1 = Buf(320, 180); T = L1;
+    poly([[0, 0], [24, 0], [18, 40], [24, 90], [14, 140], [20, 180], [0, 180]], (x, y) => rampAt(ST2, .2 + x / 24 * .4 + (vnoise(x * .3, y * .1) - .5) * .4, x, y));
+    poly([[320, 0], [300, 0], [306, 60], [298, 120], [306, 180], [320, 180]], (x, y) => rampAt(ST2, .25 + (320 - x) / 22 * -.1 + (vnoise(x * .3, y * .1) - .5) * .4, x, y));
+    poly([[60, 180], [66, 168], [72, 180]], ST2[2]); poly([[284, 180], [290, 164], [296, 180]], ST2[2]);
+    this.L = [L0, L1];
+  },
+  draw(lt, t) {
+    const roarK = lt > 2.4 && lt < 3.4 ? (1 - prog(2.4, 3.4, lt)) : 0;
+    SHAKE = roarK * 3;
+    blit(this.L[0]);
+    for (let i = 0; i < 30; i++) { const ph = (t * .03 + hash2(i, 7)) % 1, y = 25 + ph * 130, x = 40 + (y - 20) * .5 + hash2(i, 8) * 56 + Math.sin(t + i) * 3; if (Math.sin(t * 2 + i * 3) > .2) px(x, y, RAY + (i & 7)); }
+    warmGlow(38, 108, 30, t, .45);
+    flame(38, 117, 13, 5, t, 2);
+    // эмберы над лавой
+    for (let i = 0; i < 26; i++) { const ph = (t * .25 + hash2(i, 1)) % 1, ex = hash2(i, 2) * 320 + Math.sin(t + i) * 4, ey = 168 - ph * 70; if (ph < .9) px(ex, ey, FLAME + (ph < .4 ? 3 : ph < .7 ? 2 : 1)); }
+    // драматургия
+    const S0 = this.s, V = id => VMAP[id].t - S0, VE = id => VMAP[id].t + VMAP[id].dur - S0;
+    const p2a = V('p2'), d2a = V('d2'), d2b = VE('d2'), p3a = V('p3'), d3a = V('d3');
+    const asleep = lt < 2.3;
+    const hu = asleep ? 0 : lt < 3 ? eio(prog(2.3, 3, lt)) : (lt > d2a - .3 && lt < d2b + .5) ? lerp(1, .62, sstep(d2a - .3, d2a + 1.2, lt) * (1 - sstep(d2b - .6, d2b + .5, lt))) : 1;
+    const dTalk = Math.max(mouthOf('d1', t), mouthOf('d2', t), mouthOf('d3', t));
+    const mouth = (lt > 2.4 && lt < 3.2) ? 1 : dTalk * .8;
+    const sad = lt > d2a && lt < d2b + .3;
+    const happy = (lt > VE('p3') - .4 && lt < d3a + .2) || lt > d3a + 3.4;
+    const wing = sstep(d3a + 4.6, d3a + 6.8, lt);
+    const d = dragon(214, 154, .92, {
+      t, headUp: hu, mouth, eyes: asleep ? 'closed' : sad ? 'sad' : happy ? 'happy' : 'open', blink: asleep ? 0 : blinkAt(t, 1.3),
+      wing: wing + (wing > .5 ? Math.sin(t * 3) * .08 : 0), wag: lt > VE('p3') - .4 ? 9 : 3, wagSpeed: lt > VE('p3') - .4 ? 5 : 1.2, look: lt > 4 ? -1 : 0, tilt: lt > p2a && lt < d2a - .5 ? Math.sin(lt) * 3 : 0,
+    });
+    if (asleep || lt < 2.6) for (let i = 0; i < 3; i++) { const ph = (t * .5 + i / 3) % 1; ellipse(d.head[0] - 2 - ph * 6, d.head[1] - 3 - ph * 16, 1 + ph * 4, 1 + ph * 3, (x, y) => (bay(x, y) < (1 - ph) * .7 ? SMOKE : 0)); }
+    if (lt > 2.4 && lt < 3.4) for (let i = 0; i < 40; i++) { const k = hash2(i, 9), r = (lt - 2.4) * 60 * k; px(d.mouth[0] - r * .9 + (hash2(i, 3) - .5) * r * .5, d.mouth[1] - r * .45 + (hash2(i, 4) - .5) * r * .4, FLAME + 1 + (i % 3)); }
+    // принцесса
+    const pxp = lt < 2 ? lerp(40, 92, eio(prog(0, 2, lt))) : lerp(92, 118, sstep(p3a - .3, p3a + 1.7, lt));
+    const jump = lt > 2.4 && lt < 2.9 ? -Math.sin(prog(2.4, 2.9, lt) * PI) * 4 : 0;
+    const pTalk = Math.max(mouthOf('p2', t), mouthOf('p3', t));
+    warmGlow(pxp + 8, 140 + jump, 16, t, .28);
+    princess(pxp, 154 + jump, 1.4, {
+      dir: 1, pose: lt < 2 || (lt > p3a - .3 && lt < p3a + 1.7) ? 'walk' : 'stand', walk: t * 6, t,
+      arm: lt > p3a + .2 && lt < d3a + 3 ? 'reach' : lt > d3a + 6 ? 'wave' : 'lantern', talk: pTalk, blink: blinkAt(t, .4), eyes: lt > d3a + 6.5 ? 'happy' : 'open',
+    });
+    blit(this.L[1]);
+  },
+});
+
+// ---------- 5. Полёт над морем на закате ----------
+scene({
+  id: 'flight', s: 100.5, e: 116, tint: [1.05, .9, .8], light: { x: .7, y: -.6 },
+  cycles: [[WA, 8, 1.5], [WB, 8, 3]],
+  pal: P => {
+    keys(P, 32, 16, ['#2a2a6a', '#463a8a', '#7e4a8c', '#c45e7c', '#ec866a', '#ffb070', '#ffd890', '#fff0c0']);
+    keys(P, 160, 8, ['#4a3070', '#7a4080', '#b05080', '#e07078', '#f8a080', '#ffc898', '#ffe6c0', '#fff8e8']);
+    keys(P, 168, 8, ['#2a1a4a', '#40265a', '#5a3268', '#7a4070', '#9a5074', '#c06878', '#e08a80', '#f8b090']);
+    list(P, WA, ['#2a2050', '#3a2a68', '#4a3478', '#6a4280', '#a05a80', '#e08a80', '#6a4280', '#3a2a68']);
+    list(P, WB, ['#a04a5a', '#e07a50', '#ffb050', '#ffe08a', '#fff6d0', '#ffb050', '#e07a50', '#c06050']);
+    keys(P, 112, 4, ['#3a2050', '#4a2a5a', '#5a3464', '#6a3e6e']);
+    list(P, EX, ['#fff8d8', '#ffe898', '#ffc870', '#000000', '#000000', '#000000', '#000000', '#000000']);
+  },
+  build() {
+    const L0 = Buf(320, 180); T = L0;
+    skyGrad(0, 122, SKY);
+    glowAround(236, 104, 16, 60, 2, 47, 32, 1.5);
+    disc(236, 104, 18, EX + 1); disc(236, 103, 16, EX);
+    cloud(120, 96, 160, 4, CL, 3, { below: true, thr: .4, flat: .1 });
+    sea(122, 180, 236, 40, 5);
+    span(122, 0, 320, (x, y) => (bay(x, y) > .4 ? SKY[15] : WA + 5));
+    const Li = Buf(640, 180); T = Li;
+    for (const [cx, w, h] of [[80, 40, 8], [250, 24, 5], [420, 60, 12], [560, 30, 6]]) mountain(x => 122 - Math.max(0, h * Math.cos(clamp((x - cx) / w, -1, 1) * PI / 2) + (fbm(x * .1, cx) - .5) * 3), TF, { x0: cx - w, x1: cx + w, yMax: 122, tex: .2, light: 1 });
+    const Lc = Buf(640, 180); T = Lc;
+    for (let i = 0; i < 6; i++) cloud(i * 110 + 40, 40 + hash2(i, 1) * 40, 50 + hash2(i, 2) * 30, 16 + hash2(i, 3) * 8, CL, i * 7, { thr: .33, flat: .5 });
+    const Ln2 = Buf(900, 180); T = Ln2;
+    for (let i = 0; i < 4; i++) cloud(i * 230 + 80, 172, 90, 26, CL2, 40 + i * 5, { thr: .3, flat: .1 });
+    cloud(420, 8, 80, 18, CL2, 77, { thr: .34, flat: -.3 });
+    this.L = [L0, Li, Lc, Ln2];
+  },
+  draw(lt, t) {
+    blit(this.L[0]); blit(this.L[1], lt * 8, 0, true); blit(this.L[2], lt * 22, 0, true);
+    for (let i = 0; i < 14; i++) { const wx = 320 - ((lt * 260 + hash2(i, 1) * 400) % 420), wy = 20 + hash2(i, 2) * 140; line(wx, wy, wx + 10 + hash2(i, 3) * 14, wy, i % 3 ? CL[6] : CL[7]); }
+    const pTalk = mouthOf('p4', t);
+    const cx = 150 + Math.sin(lt * .5) * 12, cy = 124 + Math.sin(lt * 1.7) * 5;
+    dragon(cx, cy, .82, {
+      t, pose: 'fly', flip: true, mouth: mouthOf('n5', t) > 2 ? .3 : 0, eyes: lt > 10 ? 'happy' : 'open', blink: blinkAt(t, 2),
+      rider: () => { const sx = X(10), sy = Y(-45); princess(sx, sy, 1.15, { inSprite: true, dir: -O.f, pose: 'ride', arm: lt > 10.6 && lt < 15 ? 'wave' : 'ride', t, wind: 2.2, talk: pTalk, eyes: lt > 10.6 ? 'happy' : 'open', blink: blinkAt(t) }); },
+    });
+    blit(this.L[3], lt * 75, 0, true);
+  },
+});
+
+// ---------- 6. Ночь на вершине: дракон и принцесса у огня ----------
+scene({
+  id: 'peak', s: 116, e: DUR, tint: [.95, .78, .7], light: { x: -.8, y: -.3 },
+  cycles: [[STAR, 8, .8], [AUR, 8, 1.1], [GLOW, 8, 5], [WA, 8, .8]],
+  pal: P => {
+    keys(P, 32, 16, ['#03040e', '#060a1c', '#0a1028', '#0e1634', '#141c40', '#1a2248', '#222a52']);
+    list(P, STAR, ['#121a38', '#121a38', '#40488a', '#a0a8e0', '#ffffff', '#a0a8e0', '#40488a', '#121a38']);
+    list(P, AUR, ['#1a6a5a', '#2aa080', '#4ae0a0', '#8affc0', '#4ae0a0', '#2aa080', '#3a6aa0', '#6a4aa0']);
+    keys(P, 112, 4, ['#080a18', '#0e1222', '#14182c', '#1c2036']);
+    keys(P, 116, 4, ['#05060e', '#0a0c16', '#10121e', '#161826']);
+    keys(P, 144, 8, ['#0c080e', '#160e14', '#22141a', '#301a1e', '#422222', '#5a2c24', '#7a3a26', '#a04e2a']);
+    list(P, EX, ['#fffbe8', '#e0dcc8', '#b8b4b0', '#000000', '#000000', '#000000', '#000000', '#000000']);
+    list(P, GLOW, ['#ffc050', '#ffd870', '#ffb040', '#ffe090', '#ffc860', '#ffa030', '#ffd060', '#ffe8a0']);
+    list(P, WA, ['#0e1430', '#121a3a', '#182248', '#202c58', '#5a6aa0', '#c8d0f0', '#202c58', '#121a3a']);
+    list(P, WARM, ['#3a1c22', '#5a2620', '#8a3a20', '#c05a22']);
+  },
+  build() {
+    const L0 = Buf(320, 180); T = L0;
+    skyGrad(0, 150, SKY); starField(160, 140, 11);
+    for (let x = 0; x < 320; x++) {
+      const c = 40 + Math.sin(x * .02 + 1) * 14 + fbm(x * .03, 2) * 14;
+      for (let y = 6; y < 100; y++) {
+        const k = (y - (c - 30)) / 60; if (k < 0 || k > 1) continue;
+        const curtain = Math.pow(Math.sin(x * .09 + fbm(x * .03, y * .01) * 7) * .5 + .5, 3) * Math.pow(Math.sin(k * PI), 1.5) * (1 - k * .5) * fbm(x * .04, 5);
+        if (curtain * 2.6 > bay(x, y) * .7 + .18) px(x, y, AUR + (((x >> 3) + (y >> 4)) & 7));
+      }
+    }
+    glowAround(268, 30, 10, 26, 2, 47, 32, 1.5);
+    disc(268, 30, 10, EX); for (const [cx, cy, r] of [[265, 27, 2], [271, 33, 2.5], [272, 26, 1.4]]) disc(cx, cy, r, EX + 1);
+    for (let y = 140; y < 152; y++) for (let x = 0; x < 320; x++) px(x, y, Math.abs(x - 268) < 2 + (y - 140) * .5 * vnoise(x * .3, y) ? WA + 5 : WA + ((Math.floor(vnoise(x * .06, y * .7) * 8) + y) & 7));
+    mountain(x => 138 - fbm(x * .02, 31, 4) * 30 - 20 * Math.exp(-Math.pow((x - 60) / 50, 2)), TF, { light: -1, tex: .25, fade: .002, yMax: 152 });
+    for (const [tx, tw, top] of [[54, 6, 118], [62, 10, 112], [74, 6, 120], [52, 30, 126]]) { rect(tx, top, tw, 152 - top, TF[1]); poly([[tx - 1, top], [tx + tw / 2, top - 6], [tx + tw + 1, top]], TF[1]); }
+    for (const [wx, wy] of [[64, 118], [68, 124], [56, 128], [76, 126], [60, 136]]) px(wx, wy, GLOW + (wx & 7));
+    for (let x = 0; x < 320; x++) { const r = 150 + fbm(x * .05, 9) * 6; for (let y = Math.floor(r); y < 180; y++) px(x, y, TM[1 + (hash2(x, y) > .8 ? 1 : 0)]); }
+    const L1 = Buf(320, 180); T = L1;
+    poly([[0, 180], [0, 160], [40, 150], [90, 144], [160, 141], [240, 143], [300, 150], [320, 156], [320, 180]], (x, y) => {
+      const d = Math.hypot(x - 112, y - 140);
+      return rampAt(ST, .2 + Math.max(0, 1 - d / 140) * .7 + (fbm(x * .15, y * .1) - .5) * .5 - (y - 145) / 80, x, y);
+    });
+    rect(105, 128, 14, 16, (x, y) => rampAt(ST, .5 + (112 - x) / 14 * .4 + (y % 4 === 0 ? -.2 : 0), x, y));
+    rect(102, 125, 20, 4, ST[6]);
+    this.L = [L0, L1];
+  },
+  draw(lt, t) {
+    blit(this.L[0]);
+    if (lt > 5 && lt < 6.2) { const k = prog(5, 6.2, lt), sx = lerp(300, 150, k), sy = lerp(10, 60, k); for (let i = 0; i < 12; i++) px(sx + i * 1.5, sy - i * .5, i < 3 ? WHITE : SMOKE); }
+    blit(this.L[1]);
+    warmGlow(112, 116, 46, t, .42);
+    flame(112, 125, 18, 6, t, 3);
+    for (let i = 0; i < 16; i++) { const ph = (t * .4 + hash2(i, 1)) % 1; px(112 + Math.sin(t * 2 + i) * 6 * ph + (hash2(i, 2) - .5) * 8, 110 - ph * 50, FLAME + (ph < .5 ? 3 : 2)); }
+    dragon(240, 152, .86, { t, pose: 'rest', eyes: lt > 3 && lt < 11 ? 'open' : 'happy', blink: blinkAt(t, 1), wag: 2 });
+    princess(170, 150, 1.25, { dir: -1, pose: 'sit', arm: 'hug', t, wind: .3, eyes: lt > 12.5 ? 'happy' : 'open', blink: blinkAt(t, .6), lookUp: true });
+  },
+  overlay(lt) {
+    const a = prog(13, 14.4, lt);
+    if (a > 0) { ctx.fillStyle = `rgba(4,3,12,${a * .45})`; ctx.fillRect(0, 0, W, H); pixText('Конец', W / 2, 250, 96, a, '#ffe08a'); pixText('нарисовано и озвучено кодом', W / 2, 335, 26, prog(13.8, 15, lt), '#f3eaff'); }
+  },
+});
+
+let SHAKE = 0;
+function blinkAt(t, seed = 0) { const p = (t + seed) % 3.7; return p < .14 ? 1 : 0; }
+
+// =====================================================================
+//  Озвучка: реплики и тайминг
+// =====================================================================
+const VOICE = [
+  ['n1', 4.6, '', 'Далеко-далеко, на самом краю моря, стоял старинный замок.'],
+  ['n2', 13.5, '', 'В нём жила принцесса Нина. Больше всего на свете она любила смотреть на горы.'],
+  ['p1', 24.0, 'Нина', 'Каждую ночь на вершине горы горит огонёк… Интересно, кто же там живёт?'],
+  ['n3', 33.5, '', 'Однажды на рассвете Нина взяла фонарик и отправилась в путь.'],
+  ['n4', 41.2, '', 'Через старый лес, мимо шумного водопада — всё выше и выше в горы.'],
+  ['d1', 52.5, 'Влад', 'Р-р-р-р! Кто посмел прийти в мою пещеру?!'],
+  ['p2', 62.4, 'Нина', 'Ой… Здравствуй! Я Нина. Это твой огонёк я вижу каждую ночь?'],
+  ['d2', 69.7, 'Влад', 'Мой… Меня зовут Влад. Я зажигаю его, чтобы было не так одиноко. Ведь все меня боятся.'],
+  ['p3', 83.2, 'Нина', 'А я тебя не боюсь! Влад, хочешь, будем дружить?'],
+  ['d3', 89.4, 'Влад', 'Дружить?.. Со мной?! Тогда садись мне на спину — я покажу тебе небо!'],
+  ['n5', 102.0, '', 'И они полетели над облаками, над морем — прямо навстречу закату.'],
+  ['p4', 111.4, 'Нина', 'Ура-а-а! Мы летим!'],
+  ['n6', 117.5, '', 'С тех пор огонёк на горе больше не одинокий. Ведь у дракона Влада появился настоящий друг.'],
+].map(([id, t, who, text]) => ({ id, t, who, text, buf: null, env: null, dur: 4 }));
+const VMAP = Object.fromEntries(VOICE.map(v => [v.id, v]));
+const ENV_RATE = 40;
+function mouthOf(id, t) {
+  const v = VMAP[id]; if (!v || !v.env || t < v.t || t > v.t + v.dur) return 0;
+  return v.env[Math.min(v.env.length - 1, Math.floor((t - v.t) * ENV_RATE))] || 0;
+}
+const SPEAKER_COL = { 'Нина': '#ff9ac4', 'Влад': '#8ee0a8' };
+
+// =====================================================================
+//  Рендер кадра
+// =====================================================================
+const LUT = new Uint32Array(256), PW = new Float32Array(768);
+function sceneAt(t) { return SCENES.find(s => t < s.e) || SCENES[SCENES.length - 1]; }
+function applyPalette(sc, lt, fade) {
+  PW.set(sc.P);
+  for (let i = 2; i < 32; i++) { if (i === DEYE || i === LGLASS) continue; for (let ch = 0; ch < 3; ch++) PW[i * 3 + ch] *= sc.tint[ch]; }
+  for (const [s, n, sp] of sc.cycles) cycle(PW, s, n, lt * sp);
+  for (let i = 0; i < 256; i++) {
+    const r = Math.min(255, PW[i * 3] * fade) | 0, g = Math.min(255, PW[i * 3 + 1] * fade) | 0, b = Math.min(255, PW[i * 3 + 2] * fade) | 0;
+    LUT[i] = 0xff000000 | (b << 16) | (g << 8) | r;
+  }
+}
+function pixText(txt, x, y, size, a, col) {
+  ctx.save(); ctx.globalAlpha = a; ctx.font = size < 40 ? `${Math.round(size * .7)}px 'Press Start 2P', monospace` : `700 ${size}px 'Pixelify Sans', monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#140a18'; for (const [dx, dy] of [[-4, 0], [4, 0], [0, -4], [0, 4], [4, 4], [6, 6]]) ctx.fillText(txt, x + dx, y + dy);
+  ctx.fillStyle = col; ctx.fillText(txt, x, y); ctx.restore();
+}
+function drawSub(t) {
+  const v = VOICE.find(v => t >= v.t && t < v.t + v.dur + .3);
+  if (!v) return;
+  const a = Math.min(1, (t - v.t) / .2, (v.t + v.dur + .3 - t) / .3);
+  ctx.save(); ctx.globalAlpha = a; ctx.font = `20px 'Press Start 2P', monospace`; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  const words = (v.who ? v.who + ': ' : '') + v.text;
+  // перенос строк
+  const maxW = 1100, lines = []; let cur = '';
+  for (const w of words.split(' ')) { const test = cur ? cur + ' ' + w : w; if (ctx.measureText(test).width > maxW && cur) { lines.push(cur); cur = w; } else cur = test; }
+  lines.push(cur);
+  const lh = 34, bh = lines.length * lh + 24, by = H - bh - 24;
+  const bw = Math.max(...lines.map(l => ctx.measureText(l).width)) + 48;
+  ctx.fillStyle = 'rgba(12,8,24,.82)'; ctx.fillRect(W / 2 - bw / 2, by, bw, bh);
+  ctx.fillStyle = '#2a2048'; ctx.fillRect(W / 2 - bw / 2, by, bw, 4); ctx.fillRect(W / 2 - bw / 2, by + bh - 4, bw, 4);
+  lines.forEach((l, i) => {
+    let x = W / 2 - ctx.measureText(l).width / 2; const y = by + 12 + lh / 2 + i * lh;
+    if (i === 0 && v.who) { const nm = v.who + ': '; ctx.fillStyle = SPEAKER_COL[v.who]; ctx.fillText(nm, x, y); x += ctx.measureText(nm).width; l = l.slice(nm.length); }
+    ctx.fillStyle = v.who ? '#ffffff' : '#ffe8b0'; ctx.fillText(l, x, y);
+  });
+  ctx.restore();
+}
+function render(t) {
+  const sc = sceneAt(t), lt = t - sc.s;
+  if (!sc.P) { sc.P = makePal(sc.pal); }
+  if (!sc.L) sc.build();
+  LIGHT = sc.light; SHAKE = 0;
+  fb.fill(0); T = FB;
+  sc.draw(lt, t);
+  const fade = clamp(Math.min((t - sc.s) / .7, (sc.e - t) / .7, t / 1.2, (DUR - t) / 1.5));
+  applyPalette(sc, lt, sc.s === 0 && t < .1 ? 0 : sc === SCENES[0] ? clamp(Math.min(t / 1.2, (sc.e - t) / .7)) : fade);
+  for (let i = 0; i < fb.length; i++) img32[i] = LUT[fb[i]];
+  lctx.putImageData(img, 0, 0);
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  const sx = SHAKE ? Math.round((hash2(Math.floor(t * 40), 1) - .5) * SHAKE * 2) * SC : 0, sy = SHAKE ? Math.round((hash2(Math.floor(t * 40), 2) - .5) * SHAKE * 2) * SC : 0;
+  ctx.drawImage(low, sx, sy, W, H);
+  if (sc.overlay) sc.overlay(lt);
+  drawSub(t);
+}
+
+// =====================================================================
+//  Музыка и звук: синтез + планировщик
+// =====================================================================
+const CHORD = { D: [50, 4], Bm: [47, 3], G: [43, 4], A: [45, 4], Dm: [50, 3], Bb: [46, 4], Gm: [43, 3], Em: [52, 3], F: [41, 4] };
+const triad = n => { const [r, th] = CHORD[n]; return [r, r + th, r + 7]; };
+const THEME = [[74, 2], [76, 1], [78, 1], [81, 3], [79, 1], [78, 2], [76, 2], [74, 4], [78, 2], [79, 1], [81, 1], [83, 3], [81, 1], [79, 2], [78, 1], [76, 1], [74, 4]];
+const SECT = [
+  { t0: .4, t1: 22.5, bpm: 70, prog: ['D', 'Bm', 'G', 'D', 'G', 'D', 'A', 'D'], harp: 1, pad: 1, bass: 1, mel: { k: 'flute', from: 2 } },
+  { t0: 22.5, t1: 32.5, bpm: 56, prog: ['Dm', 'Bb', 'Gm', 'A'], pad: 1, cel: 1, bass: 1 },
+  { t0: 32.5, t1: 49.5, bpm: 100, prog: ['D', 'G', 'A', 'D', 'Bm', 'G', 'A', 'D'], lute: 1, walk: 1, shaker: 1, pad: .5, mel: { k: 'flute', from: 1 } },
+  { t0: 49.5, t1: 83, bpm: 54, prog: ['Dm', 'Dm', 'Bb', 'A'], drone: 1, pad: .8, drip: 1 },
+  { t0: 83, t1: 100.5, bpm: 72, prog: ['Bm', 'G', 'D', 'A'], harp: 1, pad: 1, bass: 1, mel: { k: 'flute', from: 2 } },
+  { t0: 100.5, t1: 116, bpm: 120, prog: ['D', 'A', 'Bm', 'G'], arp: 1, pad: 1, pulse: 1, drums: 1, mel: { k: 'brass', from: 1, oct: -12 } },
+  { t0: 116, t1: 129, bpm: 64, prog: ['D', 'Bm', 'G', 'D', 'G', 'D', 'A', 'D'], harp: 1, pad: 1, mel: { k: 'flute', from: 1 } },
+];
+function buildEvents() {
+  const ev = [];
+  for (const S of SECT) {
+    const beat = 60 / S.bpm, bar = beat * 4;
+    for (let b = 0; ; b++) {
+      const tb = S.t0 + b * bar; if (tb >= S.t1 - .05) break;
+      const tri = triad(S.prog[b % S.prog.length]), rem = S.t1 - tb;
+      if (S.pad) for (const m of tri) ev.push({ t: tb, k: 'pad', m: m + 12, d: Math.min(bar, rem) + .4, v: .02 * S.pad });
+      if (S.bass) { ev.push({ t: tb, k: 'bass', m: tri[0] - 12, d: bar * .5 }); if (rem > bar / 2) ev.push({ t: tb + bar / 2, k: 'bass', m: tri[0] - 5, d: bar * .45 }); }
+      if (S.harp) { const seq = [0, 1, 2, 3, 4, 3, 2, 1].map(i => [tri[0] + 12, tri[1] + 12, tri[2] + 12, tri[0] + 24, tri[1] + 24][i]); seq.forEach((m, i) => { if (i * beat / 2 < rem) ev.push({ t: tb + i * beat / 2, k: 'harp', m, d: 1.8 }); }); }
+      if (S.cel) [[0, 2], [1.5, 1], [3, 0]].forEach(([bt, i], j) => ev.push({ t: tb + bt * beat, k: 'cel', m: tri[i] + 24 + (j === 0 && b % 2 ? 12 : 0), d: 1.6 }));
+      if (S.lute) for (const bt of [0, 1, 1.5, 2, 3, 3.5]) tri.forEach((m, i) => ev.push({ t: tb + bt * beat + i * .014, k: 'lute', m: m + 12, d: .55 }));
+      if (S.walk) [0, 7, 12, 7].forEach((iv, i) => ev.push({ t: tb + i * beat, k: 'bass', m: tri[0] - 12 + iv, d: beat * .85 }));
+      if (S.shaker) for (let i = 0; i < 8; i++) ev.push({ t: tb + i * beat / 2, k: 'shaker', v: i % 2 ? .05 : .025 });
+      if (S.drone) { ev.push({ t: tb, k: 'drone', m: tri[0] - 24, d: bar + .3 }); ev.push({ t: tb, k: 'drone', m: tri[0] - 17, d: bar + .3 }); }
+      if (S.drip) for (let i = 0; i < 2; i++) ev.push({ t: tb + hash2(b, i) * bar, k: 'cel', m: [86, 89, 93, 98][Math.floor(hash2(b, i + 5) * 4)], d: .9, v: .035 });
+      if (S.arp) for (let i = 0; i < 16; i++) ev.push({ t: tb + i * beat / 4, k: 'arp', m: [tri[0] + 24, tri[1] + 24, tri[2] + 24, tri[0] + 36][i % 4], d: beat / 4 });
+      if (S.pulse) for (let i = 0; i < 8; i++) ev.push({ t: tb + i * beat / 2, k: 'pulse', m: tri[0] - 12, d: beat * .45 });
+      if (S.drums) { for (const bt of [0, 2, 2.5]) ev.push({ t: tb + bt * beat, k: 'kick' }); for (const bt of [1, 3]) ev.push({ t: tb + bt * beat, k: 'snare' }); }
+    }
+    if (S.mel) { let tt = S.t0 + S.mel.from * bar; for (const [m, d] of THEME) { if (tt >= S.t1 - .2) break; ev.push({ t: tt, k: S.mel.k, m: m + (S.mel.oct || 0), d: Math.min(d * beat * .95, S.t1 - tt) }); tt += d * beat; } }
+  }
+  for (const m of [50, 62, 66, 69, 74]) ev.push({ t: 129, k: 'pad', m, d: 6, v: .028 });
+  [74, 78, 81, 86, 90].forEach((m, i) => ev.push({ t: 129 + i * .12, k: 'cel', m, d: 2.5 }));
+  // эмбиент и эффекты
+  ev.push({ t: 0, k: 'amb', d: 22.5, v: .1, f: 700, lfo: .15 }, { t: 100.5, k: 'amb', d: 15.5, v: .07, f: 900, lfo: .2 }, { t: 116, k: 'amb', d: 19, v: .03, f: 500, lfo: .1 });
+  ev.push({ t: 22.5, k: 'amb', d: 10, v: .03, f: 400, lfo: .1 });
+  ev.push({ t: 41.5, k: 'amb', d: 8, v: .09, f: 3000, hp: 1, lfo: 0 });
+  ev.push({ t: 49.5, k: 'amb', d: 51, v: .06, f: 160, lfo: .07 });
+  ev.push({ t: 100.5, k: 'wind', d: 15.5 });
+  for (let i = 0; i < 14; i++) ev.push({ t: 33 + i * 1.05 + hash2(i, 1) * .5, k: 'bird', f: 2400 + hash2(i, 2) * 1400 });
+  ev.push({ t: 51.9, k: 'roar' });
+  ev.push({ t: 89.4 + 4.6, k: 'whoosh', v: .3 }, { t: 100.5, k: 'whoosh', v: .4 });
+  for (let k = 0; ; k++) { const tt = 100.5 + (PI / 2 + 2 * PI * k) / 7; if (tt > 115.5) break; ev.push({ t: tt, k: 'flap' }); }
+  for (let i = 0; i < 30; i++) ev.push({ t: 116 + hash2(i, 3) * 19, k: 'crackle' });
+  for (const v of VOICE) ev.push({ t: v.t, k: 'voice', id: v.id });
+  return ev.sort((a, b) => a.t - b.t);
+}
+const EVENTS = buildEvents();
+
+let AC = null, master = null, mon = null, musicBus = null, sfxBus = null, verbIn = null, recDest = null, noiseBuf = null, impulse = null;
+let playing = false, soundOn = true, tStart = 0, acStart = 0, evIdx = 0, schedTimer = 0, live = [];
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+function ensureAC() {
+  if (AC) return;
+  AC = new (window.AudioContext || window.webkitAudioContext)();
+  noiseBuf = AC.createBuffer(1, AC.sampleRate * 2, AC.sampleRate);
+  const nd = noiseBuf.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  const len = AC.sampleRate * 2.6; impulse = AC.createBuffer(2, len, AC.sampleRate);
+  for (let c = 0; c < 2; c++) { const d = impulse.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2); }
+}
+function buildGraph() {
+  master = AC.createGain(); master.gain.value = 1;
+  mon = AC.createGain(); mon.gain.value = soundOn ? 1 : 0; master.connect(mon); mon.connect(AC.destination);
+  if (recDest) master.connect(recDest);
+  const verb = AC.createConvolver(); verb.buffer = impulse;
+  verbIn = AC.createGain(); verbIn.gain.value = .45; verbIn.connect(verb);
+  const wet = AC.createGain(); wet.gain.value = .5; verb.connect(wet); wet.connect(master);
+  musicBus = AC.createGain(); musicBus.gain.value = .85; musicBus.connect(master); musicBus.connect(verbIn);
+  sfxBus = AC.createGain(); sfxBus.gain.value = 1; sfxBus.connect(master);
+}
+const at = t => acStart + (t - tStart);
+function env(g, when, v, a, d, rel = .1) {
+  g.gain.setValueAtTime(0, when); g.gain.linearRampToValueAtTime(v, when + a);
+  g.gain.setValueAtTime(v, when + Math.max(a, d - rel)); g.gain.exponentialRampToValueAtTime(.0001, when + d);
+}
+function osc(type, f, when, d, dest) { const o = AC.createOscillator(); o.type = type; o.frequency.setValueAtTime(f, when); o.connect(dest); o.start(when); o.stop(when + d + .05); return o; }
+function noise(when, d, dest, offset = 0) { const s = AC.createBufferSource(); s.buffer = noiseBuf; s.loop = true; s.connect(dest); s.start(when, offset % 2); s.stop(when + d + .05); return s; }
+function filt(type, f, dest, q = .7) { const b = AC.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q; b.connect(dest); return b; }
+function play(ev, when, offset = 0) {
+  const g = AC.createGain(); const k = ev.k;
+  if (k === 'voice') {
+    const v = VMAP[ev.id]; if (!v.buf) return;
+    const s = AC.createBufferSource(); s.buffer = v.buf; g.gain.value = 1.05; s.connect(g); g.connect(master);
+    s.start(when, offset); live.push(s);
+    const end = when + v.dur - offset;
+    musicBus.gain.setTargetAtTime(.32, Math.max(AC.currentTime, when - .15), .12);
+    musicBus.gain.setTargetAtTime(.85, end + .05, .35);
+    return;
+  }
+  if (k === 'pad') {
+    g.connect(musicBus); const f = filt('lowpass', 1100, g);
+    for (const det of [-7, 7]) { const o = osc('sawtooth', mtof(ev.m), when, ev.d, f); o.detune.value = det; }
+    env(g, when, ev.v || .02, .7, ev.d, .6); return;
+  }
+  if (k === 'harp' || k === 'lute') {
+    g.connect(musicBus); const f = filt('lowpass', k === 'lute' ? 2200 : 3200, g);
+    osc('triangle', mtof(ev.m), when, ev.d, f); const o2 = osc('sine', mtof(ev.m) * 2, when, ev.d, f);
+    g.gain.setValueAtTime(0, when); g.gain.linearRampToValueAtTime(k === 'lute' ? .05 : .07, when + .005); g.gain.exponentialRampToValueAtTime(.0001, when + ev.d);
+    return;
+  }
+  if (k === 'cel') {
+    g.connect(musicBus); osc('sine', mtof(ev.m), when, ev.d, g); const h = AC.createGain(); h.gain.value = .25; h.connect(g); osc('sine', mtof(ev.m) * 4, when, ev.d, h);
+    g.gain.setValueAtTime(0, when); g.gain.linearRampToValueAtTime(ev.v || .06, when + .004); g.gain.exponentialRampToValueAtTime(.0001, when + ev.d); return;
+  }
+  if (k === 'flute') {
+    g.connect(musicBus); const f = filt('lowpass', 2600, g);
+    const o = osc('sine', mtof(ev.m), when, ev.d, f); const o2 = osc('triangle', mtof(ev.m), when, ev.d, f);
+    const lfo = AC.createOscillator(), lg = AC.createGain(); lfo.frequency.value = 5.2; lg.gain.value = mtof(ev.m) * .006; lfo.connect(lg); lg.connect(o.frequency); lg.connect(o2.frequency); lfo.start(when); lfo.stop(when + ev.d + .05);
+    env(g, when, .075, .07, ev.d + .08, .14); return;
+  }
+  if (k === 'brass') {
+    g.connect(musicBus); const f = AC.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 2; f.connect(g);
+    f.frequency.setValueAtTime(500, when); f.frequency.linearRampToValueAtTime(2400, when + .08); f.frequency.linearRampToValueAtTime(1300, when + .3);
+    for (const det of [-6, 6]) { const o = osc('sawtooth', mtof(ev.m), when, ev.d, f); o.detune.value = det; }
+    env(g, when, .06, .04, ev.d + .05, .12); return;
+  }
+  if (k === 'bass') { g.connect(musicBus); osc('triangle', mtof(ev.m), when, ev.d, g); env(g, when, .13, .01, ev.d, .15); return; }
+  if (k === 'drone') { g.connect(musicBus); const f = filt('lowpass', 320, g); osc('sawtooth', mtof(ev.m), when, ev.d, f); env(g, when, .045, .5, ev.d, .4); return; }
+  if (k === 'arp') { g.connect(musicBus); const f = filt('lowpass', 1800, g); osc('square', mtof(ev.m), when, ev.d, f); env(g, when, .022, .004, ev.d, .05); return; }
+  if (k === 'pulse') { g.connect(musicBus); const f = filt('lowpass', 600, g); osc('sawtooth', mtof(ev.m), when, ev.d, f); env(g, when, .06, .005, ev.d, .06); return; }
+  if (k === 'kick') { g.connect(musicBus); const o = osc('sine', 130, when, .35, g); o.frequency.exponentialRampToValueAtTime(42, when + .25); g.gain.setValueAtTime(.4, when); g.gain.exponentialRampToValueAtTime(.001, when + .32); return; }
+  if (k === 'snare') { g.connect(musicBus); noise(when, .2, filt('bandpass', 1800, g, .8)); g.gain.setValueAtTime(.12, when); g.gain.exponentialRampToValueAtTime(.001, when + .18); return; }
+  if (k === 'shaker') { g.connect(musicBus); noise(when, .08, filt('highpass', 6000, g)); g.gain.setValueAtTime(ev.v, when); g.gain.exponentialRampToValueAtTime(.001, when + .07); return; }
+  // эффекты
+  g.connect(sfxBus);
+  if (k === 'amb' || k === 'wind') {
+    const d = ev.d - offset, f = filt(ev.hp ? 'highpass' : 'lowpass', ev.f || 600, g);
+    const s = noise(when, d, f, offset); live.push(s);
+    const v = k === 'wind' ? .06 : ev.v;
+    g.gain.setValueAtTime(0, when); g.gain.linearRampToValueAtTime(v, when + Math.min(1.5, d / 3)); g.gain.setValueAtTime(v, when + d - 1); g.gain.linearRampToValueAtTime(0, when + d);
+    if (k === 'wind' || ev.lfo) { const lfo = AC.createOscillator(), lg = AC.createGain(); lfo.frequency.value = k === 'wind' ? .3 : ev.lfo; lg.gain.value = k === 'wind' ? 500 : (ev.f || 600) * .5; lfo.connect(lg); lg.connect(f.frequency); lfo.start(when); lfo.stop(when + d); live.push(lfo); }
+    return;
+  }
+  if (k === 'bird') { const o = osc('sine', ev.f, when, .25, g); o.frequency.setValueAtTime(ev.f, when); o.frequency.exponentialRampToValueAtTime(ev.f * 1.4, when + .06); o.frequency.exponentialRampToValueAtTime(ev.f * .9, when + .14); g.gain.setValueAtTime(0, when); g.gain.linearRampToValueAtTime(.025, when + .02); g.gain.exponentialRampToValueAtTime(.001, when + .2); g.connect(verbIn); return; }
+  if (k === 'roar') {
+    const ws = AC.createWaveShaper(), curve = new Float32Array(1024); for (let i = 0; i < 1024; i++) { const x = i / 512 - 1; curve[i] = Math.tanh(x * 4); } ws.curve = curve;
+    const f = filt('lowpass', 900, g); ws.connect(f);
+    for (const [fr, det] of [[95, 0], [97, 30], [48, 0]]) { const o = osc('sawtooth', fr, when, 1.8, ws); o.detune.value = det; o.frequency.linearRampToValueAtTime(fr * .62, when + 1.7); }
+    noise(when, 1.8, filt('bandpass', 500, ws, .6));
+    g.gain.setValueAtTime(0, when); g.gain.linearRampToValueAtTime(.32, when + .12); g.gain.linearRampToValueAtTime(.25, when + 1); g.gain.exponentialRampToValueAtTime(.001, when + 1.8);
+    g.connect(verbIn); return;
+  }
+  if (k === 'whoosh') { const f = filt('bandpass', 400, g, .7); f.frequency.setValueAtTime(300, when); f.frequency.exponentialRampToValueAtTime(1600, when + .5); f.frequency.exponentialRampToValueAtTime(200, when + 1.2); noise(when, 1.3, f); g.gain.setValueAtTime(0, when); g.gain.linearRampToValueAtTime(ev.v, when + .4); g.gain.exponentialRampToValueAtTime(.001, when + 1.25); return; }
+  if (k === 'flap') { noise(when, .35, filt('lowpass', 380, g)); g.gain.setValueAtTime(0, when); g.gain.linearRampToValueAtTime(.4, when + .06); g.gain.exponentialRampToValueAtTime(.001, when + .32); return; }
+  if (k === 'crackle') { noise(when, .03, filt('highpass', 2500, g)); g.gain.setValueAtTime(.08, when); g.gain.exponentialRampToValueAtTime(.001, when + .03); return; }
+}
+function startAudio(from) {
+  ensureAC(); AC.resume();
+  buildGraph();
+  tStart = from; acStart = AC.currentTime + .06;
+  evIdx = 0; while (evIdx < EVENTS.length && EVENTS[evIdx].t < from) evIdx++;
+  // уже звучащие длинные события: реплики и эмбиент
+  for (const ev of EVENTS) {
+    if (ev.t >= from) break;
+    if (ev.k === 'voice') { const v = VMAP[ev.id]; if (from < ev.t + v.dur - .1) play(ev, acStart, from - ev.t); }
+    if ((ev.k === 'amb' || ev.k === 'wind') && from < ev.t + ev.d - .5) play(ev, acStart, from - ev.t);
+  }
+  schedule(); clearInterval(schedTimer); schedTimer = setInterval(schedule, 40);
+}
+function schedule() {
+  if (!playing) return;
+  const horizon = curTime() + .6;
+  while (evIdx < EVENTS.length && EVENTS[evIdx].t < horizon) { const ev = EVENTS[evIdx++]; play(ev, Math.max(AC.currentTime, at(ev.t))); }
+}
+function stopAudio() {
+  clearInterval(schedTimer);
+  if (!master) return;
+  const m = master; master = null;
+  m.gain.setTargetAtTime(0, AC.currentTime, .03);
+  for (const s of live) try { s.stop(AC.currentTime + .15); } catch (e) { }
+  live = [];
+  setTimeout(() => m.disconnect(), 300);
+}
+
+// =====================================================================
+//  Загрузка озвучки (+ огибающая для синхронизации губ)
+// =====================================================================
+async function loadVoices() {
+  ensureAC();
+  await Promise.all(VOICE.map(async v => {
+    const res = await fetch(`../voice/${v.id}.mp3`); const ab = await res.arrayBuffer();
+    v.buf = await new Promise((ok, err) => AC.decodeAudioData(ab, ok, err));
+    v.dur = v.buf.duration;
+    const d = v.buf.getChannelData(0), win = Math.floor(v.buf.sampleRate / ENV_RATE), n = Math.ceil(d.length / win), e = new Float32Array(n);
+    let mx = 0;
+    for (let i = 0; i < n; i++) { let s = 0; for (let j = i * win; j < Math.min(d.length, (i + 1) * win); j++) s += d[j] * d[j]; e[i] = Math.sqrt(s / win); mx = Math.max(mx, e[i]); }
+    for (let i = 0; i < n; i++) e[i] = clamp((e[i] / mx - .08) * 1.6);
+    v.env = e;
+  }));
+}
+
+// =====================================================================
+//  Плеер
+// =====================================================================
+let t = 0, recorder = null, seekTimer = 0, ready = false;
+const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+function curTime() { return playing ? tStart + (AC.currentTime - acStart) : t; }
+function ui() {
+  $('btnPlay').textContent = playing ? '⏸ Пауза' : '▶ Пуск';
+  $('btnSound').textContent = soundOn ? '🔊 Звук' : '🔇 Без звука';
+  $('btnRec').textContent = recorder ? '⏺ Запись…' : '🎬 Скачать видео';
+  $('btnRec').disabled = !!recorder || !ready;
+  $('bigPlay').hidden = playing || t > .05;
+}
+function playIt() { if (!ready) return; if (t >= DUR - .05) t = 0; playing = true; startAudio(t); ui(); }
+function pause() { if (playing) t = clamp(curTime(), 0, DUR); playing = false; stopAudio(); if (recorder && recorder.state === 'recording') recorder.stop(); ui(); }
+function toggle() { playing ? pause() : playIt(); }
+function seek(x) {
+  const was = playing; if (playing) { playing = false; stopAudio(); }
+  t = clamp(x, 0, DUR);
+  if (was) { clearTimeout(seekTimer); seekTimer = setTimeout(playIt, 120); }
+  ui();
+}
+async function record() {
+  if (recorder || !ready) return;
+  if (!window.MediaRecorder || !cv.captureStream) { alert('Этот браузер не умеет записывать видео с canvas. Попробуй Chrome.'); return; }
+  const types = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+  const mime = types.find(m => MediaRecorder.isTypeSupported(m)) || '';
+  ensureAC(); await AC.resume();
+  pause();
+  recDest = AC.createMediaStreamDestination();
+  const stream = new MediaStream([...cv.captureStream(30).getVideoTracks(), ...recDest.stream.getAudioTracks()]);
+  const chunks = [];
+  recorder = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 10e6 } : {});
+  recorder.ondataavailable = e => e.data.size && chunks.push(e.data);
+  recorder.onstop = () => {
+    const type = recorder.mimeType || 'video/webm', a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob(chunks, { type }));
+    a.download = 'princessa-i-drakon.' + (type.includes('mp4') ? 'mp4' : 'webm'); a.click();
+    recorder = null; recDest = null; ui();
+  };
+  t = 0; render(0); recorder.start(); playIt();
+}
+function loop() {
+  if (playing) { t = curTime(); if (t >= DUR) { t = DUR; pause(); } }
+  render(Math.min(Math.max(t, 0), DUR - .001));
+  const sc = $('scrub'); if (document.activeElement !== sc || playing) sc.value = t;
+  $('time').textContent = `${fmt(t)} / ${fmt(DUR)}`;
+  requestAnimationFrame(loop);
+}
+$('bigPlay').onclick = playIt; cv.onclick = toggle; $('btnPlay').onclick = toggle;
+$('btnRestart').onclick = () => { seek(0); if (!playing) setTimeout(playIt, 130); };
+$('scrub').oninput = e => seek(+e.target.value);
+$('btnSound').onclick = () => { soundOn = !soundOn; if (mon) mon.gain.value = soundOn ? 1 : 0; ui(); };
+$('btnRec').onclick = record;
+addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); toggle(); }
+  if (e.code === 'ArrowRight') seek(curTime() + 5);
+  if (e.code === 'ArrowLeft') seek(curTime() - 5);
+});
+const hm = location.hash.match(/t=([\d.]+)/); if (hm) t = +hm[1];
+ui(); requestAnimationFrame(loop);
+loadVoices().then(() => { ready = true; $('bigPlay').disabled = false; $('bigLabel').textContent = '▶ Смотреть сказку'; ui(); })
+  .catch(err => { console.error(err); ready = true; $('bigPlay').disabled = false; $('bigLabel').textContent = '▶ Смотреть (без озвучки)'; ui(); });
+</script>
+</body>
+</html>
