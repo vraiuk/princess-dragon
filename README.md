@@ -9,4 +9,7 @@
 - озвучка — Gemini TTS с режиссёрскими указаниями по интонации, губы персонажей синхронизируются с громкостью реплик;
 - кнопка «Скачать видео» записывает мультик в mp4/webm.
 
-Смотреть: https://vraiuk.github.io/princess-dragon/
+Смотреть в трёх стилях:
+- пиксель-арт: https://vraiuk.github.io/princess-dragon/
+- бумажная аппликация: https://vraiuk.github.io/princess-dragon/paper/
+- театр теней: https://vraiuk.github.io/princess-dragon/shadow/
