@@ -40,8 +40,8 @@
   <div class="controls">
     <button id="btnPlay">▶ Пуск</button>
     <button id="btnRestart" title="С начала">⏮</button>
-    <input type="range" id="scrub" min="0" max="116" step="0.01" value="0">
-    <span class="time" id="time">0:00 / 1:56</span>
+    <input type="range" id="scrub" min="0" max="135" step="0.01" value="0">
+    <span class="time" id="time">0:00 / 2:15</span>
     <button id="btnSound">🔊 Звук</button>
     <button id="btnRec" class="rec">🎬 Скачать видео</button>
   </div>
@@ -53,7 +53,7 @@
 // =====================================================================
 //  Экран: 320×180 в индексных цветах → палитра → апскейл ×4
 // =====================================================================
-const VW = 320, VH = 180, SC = 4, W = VW * SC, H = VH * SC, DUR = 116;
+const VW = 320, VH = 180, SC = 4, W = VW * SC, H = VH * SC, DUR = 135;
 const $ = id => document.getElementById(id);
 const cv = $('cv'); cv.width = W; cv.height = H;
 const ctx = cv.getContext('2d'); ctx.imageSmoothingEnabled = false;
@@ -103,7 +103,7 @@ const GR = range(128, 4), LF = range(132, 4), TR = range(136, 4), DT = range(140
 const ST = range(144, 8), ST2 = range(152, 8), CL = range(160, 8), CL2 = range(168, 8);
 const EX = 176, FLAME = 184, WARM = 188;
 
-const CHAR_COLS = ['#f4c4a0', '#c98a74', '#ffe2c8', '#f0b040', '#b0682a', '#ffe08a', '#d8508a', '#8e2a5e', '#ff90ba',
+const CHAR_COLS = ['#f4c4a0', '#c98a74', '#ffe2c8', '#94704c', '#5a4030', '#c09a70', '#d8508a', '#8e2a5e', '#ff90ba',
   '#fff8ec', '#ffd54a', '#b88020', '#2a1830', '#7a7a90', '#3a9a78', '#1f5a50', '#86d8a0', '#f2dc96', '#b8935a',
   '#e8763e', '#a03c30', '#f4ead0', '#a89880', '#ffdc3c', '#7a1828', '#ffffff', '#5a8ae0', '#2c4a9a', '#ffe6a0', '#c8c0d8'];
 const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
@@ -454,15 +454,16 @@ function dragon(x, y, s, o = {}) {
   const t = o.t || 0, hu = o.headUp ?? 1, mo = o.mouth || 0, wing = o.wing || 0;
   const fly = o.pose === 'fly', rest = o.pose === 'rest';
   const br = fly ? 0 : Math.sin(t * 1.7) * .8;
-  const hx = fly ? -64 : rest ? -50 : lerp(-46, -40, hu), hy = fly ? -46 + Math.sin(t * 3.5) * 1.5 : rest ? -11 : lerp(-16, -84, hu) + (o.tilt || 0);
+  const hx = fly ? -64 : rest ? -56 : lerp(-46, -40, hu), hy = fly ? -46 + Math.sin(t * 3.5) * 1.5 : rest ? -13 + br * .4 : lerp(-16, -84, hu) + (o.tilt || 0);
+  const by = rest ? 7 : 0; // лёжа тело ниже к земле
   const wag = Math.sin(t * (o.wagSpeed || 1.4)) * (o.wag ?? 4);
   const flap = fly ? Math.sin(t * 7) : wing;
 
   // хвост
   const tail = fly ? bez([40, -32], [84, -30 + wag], [124, -40 - wag], 22)
-    : rest ? bez([40, -14], [74, 4], [8, 6], 22).concat(bez([8, 6], [-20, 6], [-34 + wag * .3, -2], 10).slice(1))
+    : rest ? bez([40, -10], [84, 0], [116, -8 + wag * .4], 22)
     : bez([38, -15], [84, 2], [108, -18 + wag * .6], 22);
-  if (!rest) {
+  {
     for (let i = 3; i < tail.length - 2; i += 3) { const [tx, ty] = tail[i], r = lerp(9, 2, i / tail.length); Pg([[tx - 2, ty - r + 1], [tx + 2, ty - r + 1], [tx + 1, ty - r - 3.5]], HORN, INK); }
     Ch(tail, 9.5, 2, DR, INK);
     const [ex, ey] = tail[tail.length - 1];
@@ -473,15 +474,15 @@ function dragon(x, y, s, o = {}) {
   // дальние лапы
   if (!fly && !rest) { E(-12, -9, 6, 9, [17, 17], INK); E(-16, -2, 7, 2.6, [17, 17], INK); E(26, -9, 9, 8, [17, 17], INK); }
   // шипы на спине и шее
-  const neck = fly ? bez([-8, -40], [-36, -44], [hx + 8, hy + 2], 14) : bez([-6, -42], [-22, lerp(-48, -70, hu)], [hx + 8, hy + 3], 14);
+  const neck = fly ? bez([-8, -40], [-36, -44], [hx + 8, hy + 2], 14) : rest ? bez([-6, -32], [-30, -30], [hx + 9, hy + 2], 14) : bez([-6, -42], [-22, lerp(-48, -70, hu)], [hx + 8, hy + 3], 14);
   for (let i = 0; i < 6; i++) {
-    const a = PI * (1.12 + i * .12), sx = 14 + Math.cos(a) * 32, sy = -30 - br + Math.sin(a) * 21;
+    const a = PI * (1.12 + i * .12), sx = 14 + Math.cos(a) * 32, sy = -30 + by - br + Math.sin(a) * (21 - by * .4);
     Pg([[sx - 3, sy + 2], [sx + 3, sy + 2], [sx + 2.5, sy - 6]], HORN, INK);
   }
   for (let i = 2; i < neck.length - 2; i += 3) { const [nx, ny] = neck[i]; Pg([[nx + 1, ny - 7], [nx + 6, ny - 6], [nx + 6, ny - 12]], HORN, INK); }
   // тело
-  E(14, -30 - br * .5, 35, 22 + br * .4, DR, INK);
-  E(2, -22 - br * .3, 21, 14, (xx, yy) => (yy % 3 === 0) ? 20 : rampAt(BELLY, .7 - (yy - Y(-22)) / (14 * O.s) * .3, xx, yy));
+  E(14, -30 + by - br * .5, 35, 22 - by * .4 + br * .4, DR, INK);
+  if (!rest) E(2, -22 - br * .3, 21, 14, (xx, yy) => (yy % 3 === 0) ? 20 : rampAt(BELLY, .7 - (yy - Y(-22)) / (14 * O.s) * .3, xx, yy));
   // ближняя задняя лапа
   if (fly) { E(34, -26, 10, 8, DR, INK); E(46, -21, 6, 3, DR, INK); }
   else if (!rest) {
@@ -494,12 +495,8 @@ function dragon(x, y, s, o = {}) {
   Ch(nb, 5, 3.5, BELLY);
   // ближняя передняя лапа
   if (fly) { E(-22, -24, 5, 7, DR, INK); }
-  else if (rest) { E(-34, -3, 9, 3.4, DR, INK); for (const cx of [-43, -40, -37]) Pg([[cx, -2], [cx - 2.5, 0], [cx + 1, 0]], HORN); }
+  else if (rest) { E(-22, -6, 10, 6, DR, INK); E(-40, -2.5, 10, 3.2, DR, INK); for (const cx of [-50, -46.5, -43]) Pg([[cx, -2], [cx - 2.5, 0], [cx + 1, 0]], HORN); }
   else { E(-16, -12, 7, 11, DR, INK); E(-21, -2.5, 8.5, 3, DR, INK); for (const cx of [-28, -24.5, -21]) Pg([[cx, -2], [cx - 2.5, 0], [cx + 1, 0]], HORN); }
-  if (rest) {
-    for (let i = 3; i < tail.length - 2; i += 4) { const [tx, ty] = tail[i], r = lerp(9, 2, i / tail.length); Pg([[tx - 2, ty - r + 1], [tx + 2, ty - r + 1], [tx + 1, ty - r - 3]], HORN, INK); }
-    Ch(tail, 9, 2, DR, INK);
-  }
   // голова
   Ch([[hx + 6, hy - 6], [hx + 16, hy - 14], [hx + 27, hy - 14]], 2.6, .8, HORN.map(() => 24), INK);
   E(hx, hy, 13, 10.5, DR, INK);
@@ -529,7 +526,7 @@ function dragon(x, y, s, o = {}) {
   if (o.rider) o.rider();
   if (fly || wing > .12) drawWing([12, -48], fly ? flap : wing, WING, 17, INK);
   else if (!rest) { Pg([[2, -44], [20, -64], [46, -56], [54, -38], [30, -34]], WING, INK); Ln(20, -64, 30, -36, 17); Ln(46, -56, 38, -36, 17); }
-  else { Pg([[4, -40], [22, -55], [48, -48], [54, -32], [30, -30]], WING, INK); Ln(22, -55, 32, -32, 17); }
+  else { Pg([[2, -36], [22, -52], [48, -46], [54, -28], [28, -26]], WING, INK); Ln(22, -52, 30, -28, 17); Ln(48, -46, 40, -28, 17); }
   endSprite();
   return { head: [X(hx - 26), Y(hy - 1)], mouth: [X(hx - 26), Y(hy + 4)] };
 }
@@ -542,7 +539,7 @@ function scene(def) { SCENES.push(def); return def; }
 
 // ---------- 1. Замок на утёсе на закате ----------
 scene({
-  id: 'castle', s: 0, e: 19, tint: [1, 1, 1], light: { x: .7, y: -.6 },
+  id: 'castle', s: 0, e: 22.5, tint: [1, 1, 1], light: { x: .7, y: -.6 },
   cycles: [[WA, 8, 1.1], [WB, 8, 2.6], [FALL, 8, -10], [STAR, 8, .7], [GLOW, 8, 5]],
   pal: P => {
     keys(P, 32, 16, ['#1a1240', '#2e1a58', '#55246c', '#8a3474', '#c44c70', '#e8705a', '#f8a058', '#ffd27a', '#ffeaa8']);
@@ -625,7 +622,7 @@ scene({
 
 // ---------- 2. Ночь, балкон, огонёк на горе ----------
 scene({
-  id: 'balcony', s: 19, e: 28, tint: [.66, .68, .95], light: { x: .7, y: -.6 },
+  id: 'balcony', s: 22.5, e: 32.5, tint: [.66, .68, .95], light: { x: .7, y: -.6 },
   cycles: [[STAR, 8, .8], [WA, 8, .9], [GLOW, 8, 6]],
   pal: P => {
     keys(P, 32, 16, ['#04051a', '#0a0c2a', '#121640', '#1a2050', '#262b60', '#33366c', '#423f74']);
@@ -680,7 +677,7 @@ scene({
 
 // ---------- 3. Утро, путь через лес к водопаду ----------
 scene({
-  id: 'forest', s: 28, e: 42, tint: [1, .96, .92], light: { x: -.6, y: -.8 },
+  id: 'forest', s: 32.5, e: 49.5, tint: [1, .96, .92], light: { x: -.6, y: -.8 },
   cycles: [[WA, 8, 1.6], [FALL, 8, -11], [RAY, 8, 2.2], [GLOW, 8, 6]],
   pal: P => {
     keys(P, 32, 16, ['#5070b8', '#6c86c8', '#9a98d4', '#c8a8d4', '#eab4c0', '#f8caae', '#ffe2b2', '#fff2cc']);
@@ -741,20 +738,20 @@ scene({
     this.L = [L0, L1, L2, L3, L4];
   },
   draw(lt, t) {
-    const cam = eio(prog(0, 14, lt)) * .35 * 440 + prog(0, 14, lt) * .65 * 440;
+    const cam = eio(prog(0, 17, lt)) * .35 * 440 + prog(0, 17, lt) * .65 * 440;
     blit(this.L[0]); blit(this.L[1], cam * .12); blit(this.L[2], cam * .3); blit(this.L[3], cam * .6); blit(this.L[4], cam);
     shafts(cam * .6, 64, 20, 165, 1.25 + Math.sin(t * .8) * .12, .55, (x) => vnoise((x + cam * .6) * .02, 3) > .4 ? 1 : .35);
     for (let i = 0; i < 18; i++) {
       const fx = ((hash2(i, 5) * 360 - cam * .8 + Math.sin(t * .7 + i) * 10) % 340 + 340) % 340 - 10, fy = 90 + hash2(i, 6) * 60 + Math.sin(t * 1.3 + i * 2) * 6;
       if (Math.sin(t * 3 + i) > -.3) px(fx, fy, GLOW + (i & 7));
     }
-    princess(96 + lt * 1.4, 162, 1.25, { dir: 1, pose: 'walk', walk: t * 5.5, arm: 'lantern', t, wind: .2, blink: blinkAt(t) });
+    princess(96 + lt * 1.2, 162, 1.25, { dir: 1, pose: 'walk', walk: t * 5.5, arm: 'lantern', t, wind: .2, blink: blinkAt(t) });
   },
 });
 
 // ---------- 4. Пещера дракона ----------
 scene({
-  id: 'cave', s: 42, e: 85.5, tint: [1, .84, .76], light: { x: -.5, y: -.5 },
+  id: 'cave', s: 49.5, e: 100.5, tint: [1, .84, .76], light: { x: -.5, y: -.5 },
   cycles: [[FIRE, 8, 3], [AUR, 8, 1.5], [GLOW, 8, 7], [RAY, 8, 1.4]],
   pal: P => {
     keys(P, 32, 16, ['#5a80c8', '#7a9ad6', '#a6c0e6', '#d8e6f6']);
@@ -818,27 +815,29 @@ scene({
     // эмберы над лавой
     for (let i = 0; i < 26; i++) { const ph = (t * .25 + hash2(i, 1)) % 1, ex = hash2(i, 2) * 320 + Math.sin(t + i) * 4, ey = 168 - ph * 70; if (ph < .9) px(ex, ey, FLAME + (ph < .4 ? 3 : ph < .7 ? 2 : 1)); }
     // драматургия
+    const S0 = this.s, V = id => VMAP[id].t - S0, VE = id => VMAP[id].t + VMAP[id].dur - S0;
+    const p2a = V('p2'), d2a = V('d2'), d2b = VE('d2'), p3a = V('p3'), d3a = V('d3');
     const asleep = lt < 2.3;
-    const hu = asleep ? 0 : lt < 3 ? eio(prog(2.3, 3, lt)) : (lt > 17 && lt < 26.6) ? lerp(1, .62, sstep(17, 18.5, lt) * (1 - sstep(25.5, 26.6, lt))) : 1;
+    const hu = asleep ? 0 : lt < 3 ? eio(prog(2.3, 3, lt)) : (lt > d2a - .3 && lt < d2b + .5) ? lerp(1, .62, sstep(d2a - .3, d2a + 1.2, lt) * (1 - sstep(d2b - .6, d2b + .5, lt))) : 1;
     const dTalk = Math.max(mouthOf('d1', t), mouthOf('d2', t), mouthOf('d3', t));
     const mouth = (lt > 2.4 && lt < 3.2) ? 1 : dTalk * .8;
-    const sad = lt > 17.2 && lt < 26.6;
-    const happy = (lt > 31.6 && lt < 34.5) || lt > 40.5;
-    const wing = sstep(34.8, 37, lt);
+    const sad = lt > d2a && lt < d2b + .3;
+    const happy = (lt > VE('p3') - .4 && lt < d3a + .2) || lt > d3a + 3.4;
+    const wing = sstep(d3a + 4.6, d3a + 6.8, lt);
     const d = dragon(214, 154, .92, {
       t, headUp: hu, mouth, eyes: asleep ? 'closed' : sad ? 'sad' : happy ? 'happy' : 'open', blink: asleep ? 0 : blinkAt(t, 1.3),
-      wing: wing + (wing > .5 ? Math.sin(t * 3) * .08 : 0), wag: lt > 31 ? 9 : 3, wagSpeed: lt > 31 ? 5 : 1.2, look: lt > 4 ? -1 : 0, tilt: lt > 10 && lt < 16 ? Math.sin(lt) * 3 : 0,
+      wing: wing + (wing > .5 ? Math.sin(t * 3) * .08 : 0), wag: lt > VE('p3') - .4 ? 9 : 3, wagSpeed: lt > VE('p3') - .4 ? 5 : 1.2, look: lt > 4 ? -1 : 0, tilt: lt > p2a && lt < d2a - .5 ? Math.sin(lt) * 3 : 0,
     });
     if (asleep || lt < 2.6) for (let i = 0; i < 3; i++) { const ph = (t * .5 + i / 3) % 1; ellipse(d.head[0] - 2 - ph * 6, d.head[1] - 3 - ph * 16, 1 + ph * 4, 1 + ph * 3, (x, y) => (bay(x, y) < (1 - ph) * .7 ? SMOKE : 0)); }
     if (lt > 2.4 && lt < 3.4) for (let i = 0; i < 40; i++) { const k = hash2(i, 9), r = (lt - 2.4) * 60 * k; px(d.mouth[0] - r * .9 + (hash2(i, 3) - .5) * r * .5, d.mouth[1] - r * .45 + (hash2(i, 4) - .5) * r * .4, FLAME + 1 + (i % 3)); }
     // принцесса
-    const pxp = lt < 2 ? lerp(40, 92, eio(prog(0, 2, lt))) : lerp(92, 118, sstep(27, 29, lt));
+    const pxp = lt < 2 ? lerp(40, 92, eio(prog(0, 2, lt))) : lerp(92, 118, sstep(p3a - .3, p3a + 1.7, lt));
     const jump = lt > 2.4 && lt < 2.9 ? -Math.sin(prog(2.4, 2.9, lt) * PI) * 4 : 0;
     const pTalk = Math.max(mouthOf('p2', t), mouthOf('p3', t));
     warmGlow(pxp + 8, 140 + jump, 16, t, .28);
     princess(pxp, 154 + jump, 1.4, {
-      dir: 1, pose: lt < 2 || (lt > 27 && lt < 29) ? 'walk' : 'stand', walk: t * 6, t,
-      arm: lt > 27.5 && lt < 34 ? 'reach' : lt > 39 ? 'wave' : 'lantern', talk: pTalk, blink: blinkAt(t, .4), eyes: lt > 40 ? 'happy' : 'open',
+      dir: 1, pose: lt < 2 || (lt > p3a - .3 && lt < p3a + 1.7) ? 'walk' : 'stand', walk: t * 6, t,
+      arm: lt > p3a + .2 && lt < d3a + 3 ? 'reach' : lt > d3a + 6 ? 'wave' : 'lantern', talk: pTalk, blink: blinkAt(t, .4), eyes: lt > d3a + 6.5 ? 'happy' : 'open',
     });
     blit(this.L[1]);
   },
@@ -846,7 +845,7 @@ scene({
 
 // ---------- 5. Полёт над морем на закате ----------
 scene({
-  id: 'flight', s: 85.5, e: 100, tint: [1.05, .9, .8], light: { x: .7, y: -.6 },
+  id: 'flight', s: 100.5, e: 116, tint: [1.05, .9, .8], light: { x: .7, y: -.6 },
   cycles: [[WA, 8, 1.5], [WB, 8, 3]],
   pal: P => {
     keys(P, 32, 16, ['#2a2a6a', '#463a8a', '#7e4a8c', '#c45e7c', '#ec866a', '#ffb070', '#ffd890', '#fff0c0']);
@@ -880,8 +879,8 @@ scene({
     const pTalk = mouthOf('p4', t);
     const cx = 150 + Math.sin(lt * .5) * 12, cy = 124 + Math.sin(lt * 1.7) * 5;
     dragon(cx, cy, .82, {
-      t, pose: 'fly', flip: true, mouth: mouthOf('n5', t) > 2 ? .3 : 0, eyes: lt > 7.5 ? 'happy' : 'open', blink: blinkAt(t, 2),
-      rider: () => { const sx = X(10), sy = Y(-45); princess(sx, sy, 1.15, { inSprite: true, dir: -O.f, pose: 'ride', arm: lt > 7.6 && lt < 11.5 ? 'wave' : 'ride', t, wind: 2.2, talk: pTalk, eyes: lt > 7.6 ? 'happy' : 'open', blink: blinkAt(t) }); },
+      t, pose: 'fly', flip: true, mouth: mouthOf('n5', t) > 2 ? .3 : 0, eyes: lt > 10 ? 'happy' : 'open', blink: blinkAt(t, 2),
+      rider: () => { const sx = X(10), sy = Y(-45); princess(sx, sy, 1.15, { inSprite: true, dir: -O.f, pose: 'ride', arm: lt > 10.6 && lt < 15 ? 'wave' : 'ride', t, wind: 2.2, talk: pTalk, eyes: lt > 10.6 ? 'happy' : 'open', blink: blinkAt(t) }); },
     });
     blit(this.L[3], lt * 75, 0, true);
   },
@@ -889,7 +888,7 @@ scene({
 
 // ---------- 6. Ночь на вершине: дракон и принцесса у огня ----------
 scene({
-  id: 'peak', s: 100, e: DUR, tint: [.95, .78, .7], light: { x: -.8, y: -.3 },
+  id: 'peak', s: 116, e: DUR, tint: [.95, .78, .7], light: { x: -.8, y: -.3 },
   cycles: [[STAR, 8, .8], [AUR, 8, 1.1], [GLOW, 8, 5], [WA, 8, .8]],
   pal: P => {
     keys(P, 32, 16, ['#03040e', '#060a1c', '#0a1028', '#0e1634', '#141c40', '#1a2248', '#222a52']);
@@ -937,12 +936,12 @@ scene({
     warmGlow(112, 116, 46, t, .42);
     flame(112, 125, 18, 6, t, 3);
     for (let i = 0; i < 16; i++) { const ph = (t * .4 + hash2(i, 1)) % 1; px(112 + Math.sin(t * 2 + i) * 6 * ph + (hash2(i, 2) - .5) * 8, 110 - ph * 50, FLAME + (ph < .5 ? 3 : 2)); }
-    dragon(236, 152, .86, { t, pose: 'rest', eyes: lt > 3 && lt < 9 ? 'open' : 'happy', blink: blinkAt(t, 1), wag: 2 });
-    princess(170, 150, 1.25, { dir: -1, pose: 'sit', arm: 'hug', t, wind: .3, eyes: lt > 9.5 ? 'happy' : 'open', blink: blinkAt(t, .6), lookUp: true });
+    dragon(240, 152, .86, { t, pose: 'rest', eyes: lt > 3 && lt < 11 ? 'open' : 'happy', blink: blinkAt(t, 1), wag: 2 });
+    princess(170, 150, 1.25, { dir: -1, pose: 'sit', arm: 'hug', t, wind: .3, eyes: lt > 12.5 ? 'happy' : 'open', blink: blinkAt(t, .6), lookUp: true });
   },
   overlay(lt) {
-    const a = prog(10, 11.4, lt);
-    if (a > 0) { ctx.fillStyle = `rgba(4,3,12,${a * .45})`; ctx.fillRect(0, 0, W, H); pixText('Конец', W / 2, 250, 96, a, '#ffe08a'); pixText('нарисовано и озвучено кодом', W / 2, 335, 26, prog(10.8, 12, lt), '#f3eaff'); }
+    const a = prog(13, 14.4, lt);
+    if (a > 0) { ctx.fillStyle = `rgba(4,3,12,${a * .45})`; ctx.fillRect(0, 0, W, H); pixText('Конец', W / 2, 250, 96, a, '#ffe08a'); pixText('нарисовано и озвучено кодом', W / 2, 335, 26, prog(13.8, 15, lt), '#f3eaff'); }
   },
 });
 
@@ -953,19 +952,19 @@ function blinkAt(t, seed = 0) { const p = (t + seed) % 3.7; return p < .14 ? 1 :
 //  Озвучка: реплики и тайминг
 // =====================================================================
 const VOICE = [
-  ['n1', 5.0, '', 'Далеко-далеко, на самом краю моря, стоял старинный замок.'],
-  ['n2', 10.9, '', 'В нём жила принцесса Мира. Больше всего на свете она любила смотреть на горы.'],
-  ['p1', 20.4, 'Мира', 'Каждую ночь на вершине горы горит огонёк… Кто же там живёт?'],
-  ['n3', 29.0, '', 'Однажды на рассвете Мира взяла фонарик и отправилась в путь.'],
-  ['n4', 34.4, '', 'Через старый лес, мимо шумного водопада — всё выше и выше в горы.'],
-  ['d1', 45.0, 'Дракон', 'Р-р-р-р! Кто посмел прийти в мою пещеру?!'],
-  ['p2', 51.8, 'Мира', 'Здравствуй! Я Мира. Это твой огонёк я вижу каждую ночь?'],
-  ['d2', 59.0, 'Дракон', 'Мой… Я зажигаю его, чтобы было не так одиноко. Ведь все меня боятся.'],
-  ['p3', 69.2, 'Мира', 'А я не боюсь! Хочешь, будем дружить?'],
-  ['d3', 74.3, 'Дракон', 'Дружить?.. Со мной?! Тогда садись мне на спину — я покажу тебе небо!'],
-  ['n5', 87.0, '', 'И они полетели над облаками, над морем — прямо навстречу закату.'],
-  ['p4', 93.2, 'Мира', 'Ура-а-а! Мы летим!'],
-  ['n6', 101.5, '', 'С тех пор огонёк на горе больше не одинокий. Ведь у дракона появился настоящий друг.'],
+  ['n1', 4.6, '', 'Далеко-далеко, на самом краю моря, стоял старинный замок.'],
+  ['n2', 13.5, '', 'В нём жила принцесса Нина. Больше всего на свете она любила смотреть на горы.'],
+  ['p1', 24.0, 'Нина', 'Каждую ночь на вершине горы горит огонёк… Интересно, кто же там живёт?'],
+  ['n3', 33.5, '', 'Однажды на рассвете Нина взяла фонарик и отправилась в путь.'],
+  ['n4', 41.2, '', 'Через старый лес, мимо шумного водопада — всё выше и выше в горы.'],
+  ['d1', 52.5, 'Влад', 'Р-р-р-р! Кто посмел прийти в мою пещеру?!'],
+  ['p2', 62.4, 'Нина', 'Ой… Здравствуй! Я Нина. Это твой огонёк я вижу каждую ночь?'],
+  ['d2', 69.7, 'Влад', 'Мой… Меня зовут Влад. Я зажигаю его, чтобы было не так одиноко. Ведь все меня боятся.'],
+  ['p3', 83.2, 'Нина', 'А я тебя не боюсь! Влад, хочешь, будем дружить?'],
+  ['d3', 89.4, 'Влад', 'Дружить?.. Со мной?! Тогда садись мне на спину — я покажу тебе небо!'],
+  ['n5', 102.0, '', 'И они полетели над облаками, над морем — прямо навстречу закату.'],
+  ['p4', 111.4, 'Нина', 'Ура-а-а! Мы летим!'],
+  ['n6', 117.5, '', 'С тех пор огонёк на горе больше не одинокий. Ведь у дракона Влада появился настоящий друг.'],
 ].map(([id, t, who, text]) => ({ id, t, who, text, buf: null, env: null, dur: 4 }));
 const VMAP = Object.fromEntries(VOICE.map(v => [v.id, v]));
 const ENV_RATE = 40;
@@ -973,7 +972,7 @@ function mouthOf(id, t) {
   const v = VMAP[id]; if (!v || !v.env || t < v.t || t > v.t + v.dur) return 0;
   return v.env[Math.min(v.env.length - 1, Math.floor((t - v.t) * ENV_RATE))] || 0;
 }
-const SPEAKER_COL = { 'Мира': '#ff9ac4', 'Дракон': '#8ee0a8' };
+const SPEAKER_COL = { 'Нина': '#ff9ac4', 'Влад': '#8ee0a8' };
 
 // =====================================================================
 //  Рендер кадра
@@ -1040,13 +1039,13 @@ const CHORD = { D: [50, 4], Bm: [47, 3], G: [43, 4], A: [45, 4], Dm: [50, 3], Bb
 const triad = n => { const [r, th] = CHORD[n]; return [r, r + th, r + 7]; };
 const THEME = [[74, 2], [76, 1], [78, 1], [81, 3], [79, 1], [78, 2], [76, 2], [74, 4], [78, 2], [79, 1], [81, 1], [83, 3], [81, 1], [79, 2], [78, 1], [76, 1], [74, 4]];
 const SECT = [
-  { t0: .4, t1: 19, bpm: 70, prog: ['D', 'Bm', 'G', 'D', 'G', 'D', 'A', 'D'], harp: 1, pad: 1, bass: 1, mel: { k: 'flute', from: 2 } },
-  { t0: 19, t1: 28, bpm: 56, prog: ['Dm', 'Bb', 'Gm', 'A'], pad: 1, cel: 1, bass: 1 },
-  { t0: 28, t1: 42, bpm: 100, prog: ['D', 'G', 'A', 'D', 'Bm', 'G', 'A', 'D'], lute: 1, walk: 1, shaker: 1, pad: .5, mel: { k: 'flute', from: 1 } },
-  { t0: 42, t1: 69, bpm: 54, prog: ['Dm', 'Dm', 'Bb', 'A'], drone: 1, pad: .8, drip: 1 },
-  { t0: 69, t1: 85.5, bpm: 72, prog: ['Bm', 'G', 'D', 'A'], harp: 1, pad: 1, bass: 1, mel: { k: 'flute', from: 2 } },
-  { t0: 85.5, t1: 100, bpm: 120, prog: ['D', 'A', 'Bm', 'G'], arp: 1, pad: 1, pulse: 1, drums: 1, mel: { k: 'brass', from: 1, oct: -12 } },
-  { t0: 100, t1: 110, bpm: 64, prog: ['D', 'Bm', 'G', 'D', 'G', 'D', 'A', 'D'], harp: 1, pad: 1, mel: { k: 'flute', from: 1 } },
+  { t0: .4, t1: 22.5, bpm: 70, prog: ['D', 'Bm', 'G', 'D', 'G', 'D', 'A', 'D'], harp: 1, pad: 1, bass: 1, mel: { k: 'flute', from: 2 } },
+  { t0: 22.5, t1: 32.5, bpm: 56, prog: ['Dm', 'Bb', 'Gm', 'A'], pad: 1, cel: 1, bass: 1 },
+  { t0: 32.5, t1: 49.5, bpm: 100, prog: ['D', 'G', 'A', 'D', 'Bm', 'G', 'A', 'D'], lute: 1, walk: 1, shaker: 1, pad: .5, mel: { k: 'flute', from: 1 } },
+  { t0: 49.5, t1: 83, bpm: 54, prog: ['Dm', 'Dm', 'Bb', 'A'], drone: 1, pad: .8, drip: 1 },
+  { t0: 83, t1: 100.5, bpm: 72, prog: ['Bm', 'G', 'D', 'A'], harp: 1, pad: 1, bass: 1, mel: { k: 'flute', from: 2 } },
+  { t0: 100.5, t1: 116, bpm: 120, prog: ['D', 'A', 'Bm', 'G'], arp: 1, pad: 1, pulse: 1, drums: 1, mel: { k: 'brass', from: 1, oct: -12 } },
+  { t0: 116, t1: 129, bpm: 64, prog: ['D', 'Bm', 'G', 'D', 'G', 'D', 'A', 'D'], harp: 1, pad: 1, mel: { k: 'flute', from: 1 } },
 ];
 function buildEvents() {
   const ev = [];
@@ -1070,19 +1069,19 @@ function buildEvents() {
     }
     if (S.mel) { let tt = S.t0 + S.mel.from * bar; for (const [m, d] of THEME) { if (tt >= S.t1 - .2) break; ev.push({ t: tt, k: S.mel.k, m: m + (S.mel.oct || 0), d: Math.min(d * beat * .95, S.t1 - tt) }); tt += d * beat; } }
   }
-  for (const m of [50, 62, 66, 69, 74]) ev.push({ t: 110, k: 'pad', m, d: 6, v: .028 });
-  [74, 78, 81, 86, 90].forEach((m, i) => ev.push({ t: 110 + i * .12, k: 'cel', m, d: 2.5 }));
+  for (const m of [50, 62, 66, 69, 74]) ev.push({ t: 129, k: 'pad', m, d: 6, v: .028 });
+  [74, 78, 81, 86, 90].forEach((m, i) => ev.push({ t: 129 + i * .12, k: 'cel', m, d: 2.5 }));
   // эмбиент и эффекты
-  ev.push({ t: 0, k: 'amb', d: 19, v: .1, f: 700, lfo: .15 }, { t: 85.5, k: 'amb', d: 14.5, v: .07, f: 900, lfo: .2 }, { t: 100, k: 'amb', d: 16, v: .03, f: 500, lfo: .1 });
-  ev.push({ t: 19, k: 'amb', d: 9, v: .03, f: 400, lfo: .1 });
-  ev.push({ t: 35, k: 'amb', d: 7, v: .09, f: 3000, hp: 1, lfo: 0 });
-  ev.push({ t: 42, k: 'amb', d: 43.5, v: .06, f: 160, lfo: .07 });
-  ev.push({ t: 85.5, k: 'wind', d: 14.5 });
-  for (let i = 0; i < 12; i++) ev.push({ t: 28.6 + i * 1.05 + hash2(i, 1) * .5, k: 'bird', f: 2400 + hash2(i, 2) * 1400 });
-  ev.push({ t: 44.4, k: 'roar' });
-  ev.push({ t: 76.8, k: 'whoosh', v: .3 }, { t: 85.5, k: 'whoosh', v: .4 });
-  for (let k = 0; ; k++) { const tt = 85.5 + (PI / 2 + 2 * PI * k) / 7; if (tt > 99.5) break; ev.push({ t: tt, k: 'flap' }); }
-  for (let i = 0; i < 30; i++) ev.push({ t: 100 + hash2(i, 3) * 15.5, k: 'crackle' });
+  ev.push({ t: 0, k: 'amb', d: 22.5, v: .1, f: 700, lfo: .15 }, { t: 100.5, k: 'amb', d: 15.5, v: .07, f: 900, lfo: .2 }, { t: 116, k: 'amb', d: 19, v: .03, f: 500, lfo: .1 });
+  ev.push({ t: 22.5, k: 'amb', d: 10, v: .03, f: 400, lfo: .1 });
+  ev.push({ t: 41.5, k: 'amb', d: 8, v: .09, f: 3000, hp: 1, lfo: 0 });
+  ev.push({ t: 49.5, k: 'amb', d: 51, v: .06, f: 160, lfo: .07 });
+  ev.push({ t: 100.5, k: 'wind', d: 15.5 });
+  for (let i = 0; i < 14; i++) ev.push({ t: 33 + i * 1.05 + hash2(i, 1) * .5, k: 'bird', f: 2400 + hash2(i, 2) * 1400 });
+  ev.push({ t: 51.9, k: 'roar' });
+  ev.push({ t: 89.4 + 4.6, k: 'whoosh', v: .3 }, { t: 100.5, k: 'whoosh', v: .4 });
+  for (let k = 0; ; k++) { const tt = 100.5 + (PI / 2 + 2 * PI * k) / 7; if (tt > 115.5) break; ev.push({ t: tt, k: 'flap' }); }
+  for (let i = 0; i < 30; i++) ev.push({ t: 116 + hash2(i, 3) * 19, k: 'crackle' });
   for (const v of VOICE) ev.push({ t: v.t, k: 'voice', id: v.id });
   return ev.sort((a, b) => a.t - b.t);
 }
