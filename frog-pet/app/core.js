@@ -181,7 +181,7 @@
     st.bornAt = Number(st.bornAt) || now;
     st.totals = Object.assign(totalsFromDays(st.history.concat([st.day])), st.totals || {});
 
-    const every = (kind) => (kind === 'water' ? S.waterEvery : S.moveEvery) * MIN;
+    const every = (kind, set) => ((kind === 'water' ? (set || S).waterEvery : (set || S).moveEvery) * MIN);
     const ratio = (kind) => (kind === 'water' ? st.waterMs : st.sitMs) / every(kind);
     const ctx = (extra) => Object.assign({
       drinks: st.day.drinks,
@@ -193,7 +193,10 @@
 
     function rollDay(t) {
       const k = dayKey(t);
-      if (st.day.date === k) return false;
+      // только вперёд: перелёт на запад или перевод часов назад не открывают «вчера» заново
+      if (k <= st.day.date) return false;
+      // сидение, начатое до полуночи, попадает и в рекорд закрываемого дня
+      st.day.maxSitMs = Math.max(st.day.maxSitMs, st.sitMs);
       st.history.push(st.day);
       st.history = st.history.slice(-30);
       st.day = newDay(t);
@@ -204,6 +207,8 @@
     const dead = () => st.life === 'dead';
     const deathAt = (kind) => (kind === 'water' ? DEATH_WATER : DEATH_STONE);
     const doom = (kind) => clamp(ratio(kind) / deathAt(kind), 0, 1);
+    // Уровень воды «при смерти»: дальше него жаба не сохнет, пока человека нет рядом
+    const critWaterMs = () => CRITICAL * DEATH_WATER * every('water');
     const ageMin = (t) => Math.max(0, Math.floor(((dead() ? st.diedAt : t) - st.bornAt) / MIN));
 
     function endSitting() {
@@ -227,11 +232,16 @@
       if (dt > 2 * HOUR) {
         endSitting();
         st.away = false;
+        const morning = dt > 6 * HOUR || newDayStarted;
         if (!dead()) {
-          st.waterMs = Math.max(st.waterMs, every('water') * 0.9);
+          // долгое отсутствие: стакан почти пуст, но не «добиваем» жабу вчерашней жаждой;
+          // утро — почти чистый лист (0.9 интервала)
+          st.waterMs = morning ? every('water') * 0.9 : clamp(st.waterMs, every('water') * 0.9, critWaterMs());
           st.nextNag.water = 0;
+          st.nags.water = 0;
+          st.crit.water = false;
         }
-        if (dt > 6 * HOUR || newDayStarted) {
+        if (morning) {
           if (dead()) events.push(revive(t)); // утро воскрешает жабу
           events.push({ type: 'morning', text: say('morning', ctx()) });
         }
@@ -260,7 +270,9 @@
 
       // Пока жаба мертва, время до смерти не тикает
       if (!paused && !dead()) {
-        st.waterMs += dt;
+        const w = st.waterMs + dt;
+        // пока человека нет, жаба сохнет только до «при смерти»: вернулся — успеет попить
+        st.waterMs = st.away ? Math.min(w, Math.max(st.waterMs, critWaterMs())) : w;
         if (!st.away) st.sitMs += dt;
       }
       if (!st.away && idleMs < MIN) {
@@ -277,7 +289,7 @@
           }
         }
         for (const kind of ['water', 'move']) {
-          if (doom(kind) >= CRITICAL && !st.crit[kind]) {
+          if (doom(kind) >= CRITICAL - 1e-9 && !st.crit[kind]) {
             st.crit[kind] = true;
             events.push({ type: 'critical', kind, text: say('critical_' + kind, ctx()) });
           }
@@ -403,8 +415,8 @@
         ageMin: age,
         doom: { water: doom('water'), move: doom('move') },
         critical: {
-          water: crit && doom('water') >= CRITICAL,
-          move: crit && doom('move') >= CRITICAL,
+          water: crit && doom('water') >= CRITICAL - 1e-9,
+          move: crit && doom('move') >= CRITICAL - 1e-9,
         },
         totals: Object.assign({}, st.totals, {
           maxSitMs: Math.max(st.totals.maxSitMs, st.sitMs),
@@ -417,7 +429,25 @@
     return {
       tick, drink, stretch, snooze, pause, poke, view, revive,
       graveyard() { return JSON.parse(JSON.stringify(st.graveyard)); },
-      setSettings(s) { S = Object.assign({}, DEFAULTS, s); },
+      setSettings(s) {
+        const prev = S;
+        S = Object.assign({}, DEFAULTS, s);
+        if (dead()) return;
+        // интервал уменьшили на лету — доля пути сохраняется, а не скачет к смерти
+        if (every('water') < every('water', prev)) st.waterMs *= every('water') / every('water', prev);
+        if (every('move') < every('move', prev)) {
+          // рекорд сидения запоминаем до пересчёта, чтобы он не «усох»
+          st.day.maxSitMs = Math.max(st.day.maxSitMs, st.sitMs);
+          st.totals.maxSitMs = Math.max(st.totals.maxSitMs, st.sitMs);
+          st.sitMs *= every('move') / every('move', prev);
+        }
+        // хардкор включили, когда жаба уже «за гранью» — сначала предупредить, а не убить
+        if (S.deathEnabled && !prev.deathEnabled) {
+          st.waterMs = Math.min(st.waterMs, critWaterMs());
+          st.sitMs = Math.min(st.sitMs, CRITICAL * DEATH_STONE * every('move'));
+          st.crit = { water: false, move: false };
+        }
+      },
       serialize() { return JSON.parse(JSON.stringify(st)); },
       get state() { return st; },
     };

@@ -176,3 +176,74 @@ test('сериализация: ачивки и счётчики пережив�
   assert.strictEqual(createAchievements('мусор').list().length, DEFS.length);
 });
 
+
+// ---- T2: реальные дни ----
+
+test('«Ночная жаба» — по местному времени, а не по UTC', () => {
+  const { spawnSync } = require('node:child_process');
+  // 18:00 UTC: в Токио 3:00 ночи, в Лос-Анджелесе 11:00 утра
+  const code = `
+    const Core = require(${JSON.stringify(require.resolve('../app/core'))});
+    const { createAchievements } = require(${JSON.stringify(require.resolve('../app/achievements'))});
+    const t = Date.UTC(2026, 9, 20, 18, 0, 0);
+    const pet = Core.createPet(null, {}, t); pet.tick(t, 0); pet.tick(t + 1000, 1);
+    const got = createAchievements(null).check({ now: t + 1000, events: [], view: pet.view(t + 1000), state: pet.serialize() });
+    process.stdout.write(String(got.some((a) => a.id === 'night')));`;
+  const run = (TZ) => spawnSync(process.execPath, ['-e', code], { env: Object.assign({}, process.env, { TZ }) }).stdout.toString();
+  assert.strictEqual(run('Asia/Tokyo'), 'true');
+  assert.strictEqual(run('America/Los_Angeles'), 'false');
+});
+
+test('«Железножопая» не выдаётся за созвон на паузе и за сидение с перерывами', () => {
+  const pet = Core.createPet(null, {}, T0);
+  const A = createAchievements(null);
+  pet.tick(T0, 0);
+  let { t, got } = run(pet, A, T0, 80);
+  pet.pause(t, 60);
+  let r = run(pet, A, t, 60); got.push(...r.got);  // созвон на паузе
+  r = run(pet, A, r.t, 30); got.push(...r.got);    // 80 + 30 = 110 мин реального сидения
+  const idleFrom = r.t;
+  r = run(pet, A, r.t, 6, (now) => (now - idleFrom) / 1000); got.push(...r.got);   // перерыв
+  r = run(pet, A, r.t, 90); got.push(...r.got);
+  assert.ok(!ids(got).includes('iron_butt'), ids(got).join(','));
+});
+
+test('серия ломается на пропущенном дне', () => {
+  const A = createAchievements(null);
+  const day = (d) => ({ date: Core.dayKey(new Date(2026, 9, d).getTime()), drinks: 7, breaks: 3, autoBreaks: 2 });
+  const state = { history: [day(14), day(15), day(17)], day: day(18) };   // 16-го не запускал
+  const got = ids(A.check({ now: new Date(2026, 9, 18, 18).getTime(), events: [], view: {}, state }));
+  assert.ok(!got.includes('streak3'));
+  assert.deepStrictEqual(A.list().find((a) => a.id === 'streak3').progress, { cur: 2, max: 3 });
+});
+
+test('неделя жизни с перезапусками: ни одна ачивка не выдаётся дважды, check дешёвый', () => {
+  let saved = null, savedA = null, t = new Date(2026, 9, 19, 9, 0).getTime();
+  const seen = [];
+  let checks = 0;
+  const started = Date.now();
+  for (let dayN = 0; dayN < 7; dayN++) {
+    for (const half of [0, 1]) {
+      // каждые полдня приложение перезапускается из сохранения
+      const pet = Core.createPet(saved, {}, t);
+      const A = createAchievements(savedA);
+      for (let i = 0; i < 4 * 360; i++) {               // 4 часа тиками по 10 с
+        t += 10000;
+        const evs = pet.tick(t, i % 300 > 290 ? 400 : 1);
+        if (i % 240 === 0) evs.push(pet.drink(t));
+        if (i % 500 === 0) evs.push(pet.poke());
+        seen.push(...ids(A.check({ now: t, events: evs, view: pet.view(t), state: pet.serialize() })));
+        checks++;
+      }
+      saved = JSON.parse(JSON.stringify(pet.serialize()));
+      savedA = JSON.parse(JSON.stringify(A.serialize()));
+      t += half ? 15 * HOUR : HOUR;                     // обед / ночь
+    }
+  }
+  const dup = seen.filter((id, i) => seen.indexOf(id) !== i);
+  assert.deepStrictEqual(dup, []);
+  assert.ok(seen.includes('first_drink') && seen.includes('graceful'));
+  assert.ok(!seen.includes('raisin') && !seen.includes('jade') && !seen.includes('iron_butt'), seen.join(','));
+  const perCheck = (Date.now() - started) / checks;
+  assert.ok(perCheck < 1, `tick+check ${perCheck.toFixed(3)} мс — укладывается в секундный тик`);
+});

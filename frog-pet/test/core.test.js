@@ -327,3 +327,178 @@ test('сериализация новых полей и совместимост
   o.drink(T0);
   assert.strictEqual(o.view(T0).totals.drinks, 8);
 });
+
+// ---- Реальный день пользователя (T2) ----
+
+// Сценарий дня: тики каждые 10 с, как часы в main (там раз в секунду)
+function life(pet, t) {
+  const L = { t, events: [] };
+  const tick = (idle) => { L.events.push(...pet.tick(L.t, idle)); };
+  // работает: мышь/клавиатура трогаются постоянно
+  L.work = (min) => { for (let i = 0; i < min * 6; i++) { L.t += 10000; tick(1); } return L; };
+  // не трогает мышь min минут (читает, ушёл), потом возвращается
+  L.idle = (min) => {
+    const from = L.t;
+    for (let i = 0; i < min * 6; i++) { L.t += 10000; tick((L.t - from) / 1000); }
+    L.t += 1000; tick(0);
+    return L;
+  };
+  // ноутбук спит / крышка закрыта: тиков нет вообще
+  L.sleep = (min) => { L.t += min * MIN; tick(0); return L; };
+  L.drink = () => { L.events.push(pet.drink(L.t)); return L; };
+  L.of = (type) => L.events.filter((e) => e.type === type);
+  return L;
+}
+
+test('обычный день 9–19: обед, созвоны на паузе, чтение без мыши — ни смертей, ни critical', () => {
+  const T9 = new Date(2026, 9, 19, 9, 0, 0).getTime();
+  const pet = createPet(null, {}, T9);
+  pet.tick(T9, 0);
+  const L = life(pet, T9).drink();
+  L.work(40).idle(4).work(20).drink();             // 4 мин читает доку — не перерыв
+  assert.strictEqual(L.of('back').length, 0, 'чтение 4 мин без мыши не засчитано как перерыв');
+  L.idle(6).work(30);                               // отошёл на 6 мин — перерыв
+  assert.strictEqual(L.of('back').length, 1);
+  pet.pause(L.t, 60); L.work(60);                   // созвон на паузе
+  L.drink().work(30).idle(60).drink().work(45);     // обед 60 мин
+  L.sleep(20).work(40).drink().idle(7).work(50).drink().work(30);  // крышка закрыта 20 мин
+  const v = pet.view(L.t);
+  assert.strictEqual(v.life, 'alive');
+  assert.strictEqual(L.of('death').length, 0);
+  assert.strictEqual(L.of('critical').length, 0);
+  assert.strictEqual(v.day.drinks, 6);
+  assert.strictEqual(pet.state.day.autoBreaks, 4, '6 мин, обед, крышка, 7 мин');
+  assert.ok(v.day.maxSit < 120);
+});
+
+test('вернулся с обеда, не попив до него: жаба при смерти, но не умирает мгновенно', () => {
+  const pet = createPet(null, {}, T0);
+  pet.tick(T0, 0);
+  const L = life(pet, T0).drink().work(90);        // 90 мин без воды (ratio 2.0, ещё не critical)
+  assert.strictEqual(L.of('critical').length, 0);
+  L.idle(60);                                       // обед: за это время дошёл бы до 3.33
+  assert.strictEqual(L.of('death').length, 0, 'не умерла при возвращении');
+  assert.strictEqual(pet.view(L.t).life, 'alive');
+  assert.strictEqual(L.of('critical').length, 1, 'сначала предупреждение');
+  L.work(20);
+  assert.strictEqual(pet.view(L.t).life, 'alive', 'есть время дойти до кулера');
+  L.work(10);
+  assert.strictEqual(L.of('death').length, 1, 'игнор после возвращения всё же убивает');
+});
+
+test('ночь после critical: утром жаба не умирает через пару минут', () => {
+  const pet = createPet(null, { moveEvery: 999 }, T0);
+  pet.tick(T0, 0);
+  const L = life(pet, T0).drink().work(125);        // вечером довёл до 2.78 — critical
+  assert.strictEqual(L.of('critical').length, 1);
+  L.sleep(14 * 60);                                 // ноутбук закрыт на ночь
+  assert.ok(L.of('morning').length === 1);
+  L.work(30);
+  assert.strictEqual(L.of('death').length, 0);
+  assert.ok(pet.view(L.t).waterRatio < 2, 'утро — почти пустой стакан, а не вчерашняя засуха');
+});
+
+test('крышка закрыта 3 часа в critical: снова предупреждение, а не смерть сразу', () => {
+  const pet = createPet(null, { moveEvery: 999 }, T0);
+  pet.tick(T0, 0);
+  const L = life(pet, T0).drink().work(130);
+  L.sleep(3 * 60);
+  const before = L.of('critical').length;
+  L.work(1);
+  assert.strictEqual(L.of('death').length, 0);
+  assert.strictEqual(L.of('critical').length, before + 1);
+  L.work(15);
+  assert.strictEqual(pet.view(L.t).life, 'alive');
+});
+
+test('уменьшили waterEvery/moveEvery на лету — жаба не умирает в следующий тик', () => {
+  const pet = createPet(null, {}, T0);
+  pet.tick(T0, 0);
+  const L = life(pet, T0).work(40);
+  const before = pet.view(L.t);
+  pet.setSettings(Object.assign({}, DEFAULTS, { waterEvery: 10, moveEvery: 10 }));
+  L.work(1);
+  const v = pet.view(L.t);
+  assert.strictEqual(L.of('death').length, 0);
+  assert.strictEqual(v.life, 'alive');
+  assert.ok(v.waterRatio < before.waterRatio + 0.2, 'доля пути не скачет');
+  assert.ok(v.sitRatio < before.sitRatio + 0.2);
+  assert.ok(pet.view(L.t).totals.maxSitMs >= 40 * MIN, 'рекорд сидения не усох');
+  // увеличение интервала ничего не пересчитывает
+  pet.setSettings(Object.assign({}, DEFAULTS, { waterEvery: 60 }));
+  assert.strictEqual(pet.state.waterMs, pet.serialize().waterMs);
+});
+
+test('включили хардкор, когда жаба давно «за гранью»: сначала critical, потом смерть', () => {
+  const pet = createPet(null, { deathEnabled: false }, T0);
+  pet.tick(T0, 0);
+  const L = life(pet, T0).work(4 * 60);
+  assert.strictEqual(pet.view(L.t).life, 'alive');
+  pet.setSettings(Object.assign({}, DEFAULTS, { deathEnabled: true }));
+  L.work(1);
+  assert.strictEqual(L.of('death').length, 0, 'не умирает мгновенно');
+  assert.deepStrictEqual(L.of('critical').map((e) => e.kind).sort(), ['move', 'water']);
+  L.work(30);
+  assert.strictEqual(L.of('death').length, 1, 'игнор после предупреждения убивает');
+});
+
+test('пауза поверх critical: не умирает и не ноет, после паузы — как было', () => {
+  const pet = createPet(null, {}, T0);
+  pet.tick(T0, 0);
+  const L = life(pet, T0).drink().work(115);
+  assert.strictEqual(L.of('critical').length, 2);
+  const ratio = pet.view(L.t).waterRatio;
+  pet.pause(L.t, 120);
+  const n = L.events.length;
+  L.work(119);
+  assert.deepStrictEqual(L.events.slice(n), [], 'на паузе тишина');
+  assert.strictEqual(pet.view(L.t).waterRatio, ratio);
+  L.work(2);
+  assert.strictEqual(L.events[n].type, 'resumed');
+  assert.ok(L.events.slice(n).some((e) => e.type === 'remind'), 'после паузы снова напоминает');
+  assert.strictEqual(pet.view(L.t).life, 'alive');
+});
+
+test('перевод часов назад / перелёт на запад через полночь не плодит дни', () => {
+  const pet = createPet(null, {}, T0);
+  pet.tick(T0, 0);
+  const d2 = new Date(2026, 9, 20, 0, 5).getTime();
+  pet.tick(d2, 1);
+  pet.drink(d2);
+  const back = new Date(2026, 9, 19, 23, 50).getTime(); // часы ушли назад на 15 мин
+  pet.tick(back, 1);
+  pet.drink(back);
+  pet.tick(d2 + MIN, 1);
+  const st = pet.serialize();
+  assert.deepStrictEqual(st.history.map((d) => d.date), ['2026-10-19']);
+  assert.strictEqual(st.day.date, '2026-10-20');
+  assert.strictEqual(st.day.drinks, 2);
+  assert.strictEqual(st.totals.days, 2);
+});
+
+test('полночь во время работы: долгий заход попадает в рекорд вчерашнего дня', () => {
+  const t = new Date(2026, 9, 19, 23, 0).getTime();
+  const pet = createPet(null, { moveEvery: 999, waterEvery: 999 }, t);
+  pet.tick(t, 0);
+  const L = life(pet, t).work(90);
+  assert.strictEqual(pet.state.history.length, 1);
+  assert.ok(pet.state.history[0].maxSitMs >= 59 * MIN);
+  assert.ok(pet.view(L.t).day.maxSit >= 90, 'сегодняшний заход тоже виден');
+});
+
+test('выходные и неделя простоя: утро, дни считаются один раз, история ограничена', () => {
+  const pet = createPet(null, {}, T0);
+  pet.tick(T0, 0);
+  let L = life(pet, T0).drink().work(60);
+  L.sleep(2 * 24 * 60 + 60);                        // выходные без запуска
+  assert.strictEqual(L.of('morning').length, 1);
+  L.work(60).sleep(7 * 24 * 60);                    // неделя простоя
+  assert.strictEqual(L.of('morning').length, 2);
+  assert.strictEqual(L.of('death').length, 0);
+  for (let i = 0; i < 40; i++) L.work(30).sleep(24 * 60 - 30);
+  const st = pet.serialize();
+  assert.strictEqual(st.totals.days, 43);
+  assert.strictEqual(st.history.length, 30);
+  assert.strictEqual(new Set(st.history.map((d) => d.date)).size, 30);
+  assert.strictEqual(st.totals.drinks, 1);
+});

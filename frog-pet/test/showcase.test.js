@@ -11,13 +11,13 @@ const HAS_DEATH = typeof Core.createPet(null, {}, Date.now()).revive === 'functi
 const NO_DEATH = HAS_DEATH ? false : 'в core.js ещё нет life/death/revive (пишет A1)';
 
 // Фейковый ctl поверх настоящего core — как demo.js / main.js
-function makeCtl() {
-  const T0 = new Date(2026, 9, 19, 11, 0, 0).getTime();
+function makeCtl(T0 = new Date(2026, 9, 19, 11, 0, 0).getTime()) {
   const c = { now: T0, pet: null, A: null, events: [], unlocked: [], log: [] };
   const check = (evs) => {
     if (!c.A) return;
     const fresh = c.A.check({ now: c.now, events: evs, view: c.pet.view(c.now), state: c.pet.serialize(), settings: Core.DEFAULTS }) || [];
     c.unlocked.push(...fresh.map((a) => a.id));
+    c.shown = (c.shown || []).concat(fresh.filter((a) => Show.showAchievement(Show.SCRIPTS[c.name], a)).map((a) => a.id));
   };
   c.ctl = {
     reset() {
@@ -79,9 +79,10 @@ function fakeTimers() {
   return f;
 }
 
-function play(name) {
-  const c = makeCtl();
+function play(name, T0) {
+  const c = makeCtl(T0);
   const f = fakeTimers();
+  c.name = name;
   const d = Show.createDirector(Show.SCRIPTS[name], c.ctl, { timers: f.timers });
   let ended = null, endAt = null;
   d.onEnd((r) => { ended = r; endAt = f.t; });
@@ -189,4 +190,24 @@ test('water, stone и tour доводят жабу до нужной смерт�
   assert.deepStrictEqual(t.events.filter((e) => e.type === 'death').map((e) => e.cause), ['dry', 'stone']);
   assert.ok(t.events.some((e) => e.type === 'back'), 'tour показывает авто-перерыв');
   for (const c of [w, s, t]) assert.strictEqual(c.pet.view(c.now).life, 'alive', 'в финале жаба жива');
+});
+
+test('сценарии одинаковы в любое время съёмки: ночь, утро, пятничный вечер, полночь', { skip: NO_DEATH || (!Ach && 'нет achievements.js') }, () => {
+  // 23 окт 2026 — пятница
+  const starts = [11, 0, 3, 7.5, 18, 23.5].map((h) => new Date(2026, 9, 23, Math.floor(h), (h % 1) * 60).getTime());
+  for (const name of Object.keys(Show.SCRIPTS)) {
+    const runs = starts.map((T0) => {
+      const { c } = play(name, T0);
+      return {
+        story: c.events.filter((e) => ['death', 'reborn', 'critical', 'back'].includes(e.type)).map((e) => e.type + ':' + (e.cause || e.kind || '')).join(' '),
+        shown: (c.shown || []).slice().sort().join(','),
+        life: c.pet.view(c.now).life,
+      };
+    });
+    for (const r of runs.slice(1)) {
+      assert.strictEqual(r.story, runs[0].story, name + ': механика не зависит от часов');
+      assert.strictEqual(r.shown, runs[0].shown, name + ': в кадре те же ачивки (без «Ночной жабы»/«Пятничного деплоя»)');
+      assert.strictEqual(r.life, 'alive');
+    }
+  }
 });

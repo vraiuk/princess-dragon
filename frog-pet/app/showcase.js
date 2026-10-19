@@ -199,10 +199,15 @@
     return true;
   }
 
+  // Ачивки, зависящие от реальных часов съёмки (симулированное время стартует с «сейчас»):
+  // ночью или в пятницу вечером они всплыли бы посреди дубля
+  const CLOCK_BOUND = ['night', 'early_bird', 'friday', 'leet'];
+
   // Показывать ли тост ачивки во время сценария (script.achievements — белый список id)
   function showAchievement(script, a) {
     const only = script && script.achievements;
-    return !Array.isArray(only) || !!(a && only.indexOf(a.id) >= 0);
+    if (Array.isArray(only)) return !!(a && only.indexOf(a.id) >= 0);
+    return !(a && CLOCK_BOUND.indexOf(a.id) >= 0);
   }
 
   // ctl: { reset, ff(minutes, idleSec), action(type, opts), say(text), event(ev), caption?(text) }
@@ -259,5 +264,5 @@
     };
   }
 
-  return { SCRIPTS, createDirector, expand, run, quiet, showAchievement, HOLD, FF_DT };
+  return { SCRIPTS, createDirector, expand, run, quiet, showAchievement, HOLD, FF_DT, CLOCK_BOUND };
 });
