@@ -263,7 +263,8 @@ test('кладбище хранит последние 50 жаб', () => {
   let t = T0;
   pet.tick(t, 0);
   for (let i = 0; i < 55; i++) {
-    ({ t } = run(pet, t, 3));
+    // 3-я минута: ratio 3 перепрыгивает зону critical — сначала предупреждение, смерть на 4-й (r1-06-03)
+    ({ t } = run(pet, t, 4));
     pet.revive(t);
   }
   const g = pet.graveyard();
@@ -501,4 +502,184 @@ test('выходные и неделя простоя: утро, дни счит
   assert.strictEqual(st.history.length, 30);
   assert.strictEqual(new Set(st.history.map((d) => d.date)).size, 30);
   assert.strictEqual(st.totals.drinks, 1);
+});
+
+// ---------- круг 2 (F1): регрессии по находкам r1 ----------
+const Core = require('../app/core');
+
+// жаба работает до смерти (тики по 20 с)
+function untilDead(pet, t) {
+  for (let i = 0; i < 5000 && pet.view(t).life === 'alive'; i++) { t += 20 * 1000; pet.tick(t, 1); }
+  return t;
+}
+
+test('r1-06-01: разовый тик с часами в прошлом не превращается в «ночь»', () => {
+  const pet = createPet(null, {}, T0);
+  pet.tick(T0, 0);
+  const real = untilDead(pet, T0);
+  assert.strictEqual(pet.view(real).life, 'dead');
+  pet.tick(real - 7 * HOUR, 1);                  // часы скакнули назад на один тик
+  const ev = pet.tick(real + 20 * 1000, 1);      // реально прошло 20 секунд
+  assert.deepStrictEqual(ev.map((e) => e.type), []);
+  assert.strictEqual(pet.view(real + 20 * 1000).life, 'dead');
+
+  // живая жаба при смерти: скачок назад-вперёд её не «лечит»
+  const p2 = createPet(null, {}, T0);
+  p2.tick(T0, 0);
+  const L = life(p2, T0).work(110);
+  const wr = p2.view(L.t).waterRatio;
+  p2.tick(L.t - 7 * HOUR, 1);
+  p2.tick(L.t + 10 * 1000, 1);
+  assert.ok(p2.view(L.t).waterRatio >= wr, 'стакан не наполнился сам');
+});
+
+test('r1-06-01: часы переведены назад насовсем — жаба продолжает жить по новым часам', () => {
+  const pet = createPet(null, { moveEvery: 999 }, T0);
+  pet.tick(T0, 0);
+  let t = T0 + 30 * MIN;
+  pet.tick(t, 1);
+  t -= 3 * HOUR;                                  // часы спешили на 3 ч, NTP их поправил
+  for (let i = 0; i < 20 * 6; i++) { t += 10000; pet.tick(t, 1); }
+  assert.ok(pet.view(t).waterRatio > 50 / 45 - 0.01, 'вода продолжает убывать: ' + pet.view(t).waterRatio);
+});
+
+test('r1-06-02: tick(NaN)/tick(Infinity) игнорируются и не портят день и стакан', () => {
+  let t = T0;
+  const pet = createPet(null, {}, t);
+  pet.tick(t, 0);
+  assert.deepStrictEqual(pet.tick(NaN, 0), []);
+  assert.deepStrictEqual(pet.tick(Infinity, 0), []);
+  assert.deepStrictEqual(pet.tick(undefined, 0), []);
+  t += MIN; pet.tick(t, 0);
+  t += 24 * HOUR; pet.tick(t, 0);
+  const s = pet.serialize();
+  assert.strictEqual(s.day.date, Core.dayKey(t));
+  assert.ok(Number.isFinite(s.waterMs) && Number.isFinite(s.lastTick));
+});
+
+test('r1-06-03: тик перепрыгнул зону «при смерти» — сначала critical, смерть только следующим тиком', () => {
+  let t = T0;
+  const pet = createPet(null, { waterEvery: 3, moveEvery: 1000 }, t);
+  pet.tick(t, 0);
+  const ev = [];
+  for (let i = 0; i < 4 && pet.view(t).life === 'alive'; i++) { t += 4.5 * MIN; ev.push(...pet.tick(t, 0)); }
+  const types = ev.filter((e) => e.type === 'critical' || e.type === 'death').map((e) => e.type);
+  assert.deepStrictEqual(types, ['critical', 'death']);
+});
+
+test('r1-06-03: мусорные интервалы (0, NaN, отрицательные) заменяются значениями по умолчанию', () => {
+  for (const bad of [0, NaN, -5, 'x', null, Infinity]) {
+    const pet = createPet(null, { waterEvery: bad, moveEvery: bad, breakAfter: bad, nagEvery: bad }, T0);
+    pet.tick(T0, 0);
+    const L = life(pet, T0).work(10);
+    const v = pet.view(L.t);
+    assert.strictEqual(v.life, 'alive', 'waterEvery=' + bad);
+    assert.ok(Number.isFinite(v.glass) && v.glass > 0.7, 'glass=' + v.glass);
+    pet.setSettings({ waterEvery: bad });
+    assert.ok(Number.isFinite(pet.view(L.t).glass));
+  }
+});
+
+test('r1-06-04: мёртвой жабе не говорят «камень осыпался» и «я снова на посту»', () => {
+  const pet = createPet(null, {}, T0, () => 0);
+  pet.tick(T0, 0);
+  const L = life(pet, T0).drink();
+  L.work(200);
+  assert.strictEqual(pet.view(L.t).cause, 'stone');
+  L.idle(10);
+  const back = L.of('back');
+  assert.strictEqual(back.length, 1, 'перерыв засчитан в статистику');
+  assert.ok(!/осыпался|без стула/.test(back[0].text), back[0].text);
+  pet.pause(L.t, 1);
+  L.work(2);
+  const res = L.of('resumed');
+  assert.strictEqual(res.length, 1);
+  assert.ok(!/на посту/.test(res[0].text), res[0].text);
+  assert.ok(!/на посту/.test(pet.pause(L.t, 0).text));
+  assert.strictEqual(pet.view(L.t).sitMin, 120, 'камень не осыпался');
+});
+
+test('r1-02-04: без ответа напоминания приходят не чаще раза в nagEvery', () => {
+  const pet = createPet(null, {}, T0);
+  pet.tick(T0, 0);
+  const at = [];
+  let t = T0;
+  for (let i = 1; i <= 150 && pet.view(t).life === 'alive'; i++) {
+    t += MIN;
+    if (pet.tick(t, 1).some((e) => e.type === 'remind')) at.push(i);
+  }
+  // первые напоминания о воде (45) и о движении (50) — как обещано, дальше общий повтор раз в 10 мин
+  assert.deepStrictEqual(at.slice(0, 2), [45, 50]);
+  for (let i = 2; i < at.length; i++) assert.ok(at[i] - at[i - 1] >= 10, 'напоминания: ' + at.join(','));
+});
+
+test('r1-02-04: «Позже» не отменяется напоминанием о другом таймере', () => {
+  const pet = createPet(null, {}, T0);
+  pet.tick(T0, 0);
+  const L = life(pet, T0).work(46);              // вода просит
+  pet.snooze('water', L.t, 30);
+  const n = L.events.length;
+  L.work(20);                                     // разминка просит на 50-й
+  const water = L.events.slice(n).filter((e) => e.type === 'remind' && e.kind === 'water');
+  assert.deepStrictEqual(water, [], 'вода отложена на 30 мин');
+});
+
+test('r1-02-08: после сна 2–6 ч жаба сразу просит воды', () => {
+  const pet = createPet(null, {}, T0);
+  pet.tick(T0, 0);
+  const L = life(pet, T0).work(20).sleep(3 * 60).work(1);
+  assert.ok(L.events.some((e) => e.type === 'remind' && e.kind === 'water'));
+  assert.strictEqual(L.of('death').length + L.of('critical').length, 0);
+});
+
+test('r1-05-01: одна и та же реплика не выпадает дважды подряд; poke без дублей', () => {
+  const pet = createPet(null, {}, T0);
+  for (let i = 0; i < 200; i++) {
+    const a = pet.poke().text, b = pet.poke().text;
+    assert.notStrictEqual(a, b);
+  }
+  const say = Core.say;
+  let prev = null;
+  const last = {};
+  for (let i = 0; i < 200; i++) { const s = say('waterBad', {}, null, last); assert.notStrictEqual(s, prev); prev = s; }
+  assert.strictEqual(new Set(Core.PHRASES.poke).size, Core.PHRASES.poke.length);
+});
+
+test('r1-05-05: длительности в репликах — часами и днями, а не сотнями минут', () => {
+  const f = Core.fmtDur;
+  assert.strictEqual(f(0), '0 мин');
+  assert.strictEqual(f(45), '45 мин');
+  assert.strictEqual(f(60), '1 ч');
+  assert.strictEqual(f(110), '1 ч 50 мин');
+  assert.strictEqual(f(1440), '1 день');
+  assert.strictEqual(f(2950), '2 дня 1 ч');
+  assert.strictEqual(f(5 * 1440 + 30), '5 дней');
+  const pet = createPet(null, {}, T0);
+  assert.strictEqual(pet.pause(T0, 240).text, 'Ок, не мешаю. Пауза на 4 ч 🤫');
+  for (const s of Object.values(Core.PHRASES).flat()) assert.ok(!/\{\w+\} мин/.test(s), 'минуты в фразе: ' + s);
+});
+
+test('r1-05-06/08/11/16: фразы смерти влезают в облачко надгробия, тексты без «...» и «сидели»', () => {
+  for (const k of ['death_dry', 'death_stone']) {
+    for (const s of Core.PHRASES[k]) {
+      const t = s.replace(/\{gen\}/g, '999').replace(/\{age\}/g, '2 дня 23 ч');
+      assert.ok(t.length <= 64, t.length + ': ' + t);
+    }
+  }
+  for (const s of Object.values(Core.PHRASES).flat()) {
+    assert.ok(!/\.\.\./.test(s), 'многоточие тремя точками: ' + s);
+    assert.ok(!/сидели|погашен ею|и я stack trace/.test(s), s);
+  }
+});
+
+test('r1-04-08: свой генератор случайных чисел — реплики воспроизводимы', () => {
+  const runOnce = () => {
+    let seed = 42;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const pet = createPet(null, {}, T0, rnd);
+    pet.tick(T0, 0);
+    const L = life(pet, T0).work(130);
+    return L.events.map((e) => e.text + (e.tip || '')).join('|') + pet.poke().text;
+  };
+  assert.strictEqual(runOnce(), runOnce());
 });

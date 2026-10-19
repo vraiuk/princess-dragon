@@ -33,6 +33,20 @@
   };
   const pick = (arr, rnd) => arr[Math.floor((rnd || Math.random)() * arr.length) % arr.length];
   const fill = (s, ctx) => s.replace(/\{(\w+)\}/g, (_, k) => (ctx && ctx[k] != null ? ctx[k] : ''));
+  const plural = (n, one, few, many) => {
+    const m10 = n % 10, m100 = n % 100;
+    return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
+  };
+  // Длительность в минутах по-человечески: «45 мин», «1 ч 50 мин», «2 дня 1 ч»
+  function fmtDur(min) {
+    min = Math.max(0, Math.round(Number(min) || 0));
+    if (min < 60) return min + ' мин';
+    if (min < 1440) return Math.floor(min / 60) + ' ч' + (min % 60 ? ' ' + (min % 60) + ' мин' : '');
+    const d = Math.floor(min / 1440), h = Math.floor((min % 1440) / 60);
+    return d + ' ' + plural(d, 'день', 'дня', 'дней') + (h && d < 5 ? ' ' + h + ' ч' : '');
+  }
+  // поля контекста, которые в репликах выводятся как длительность
+  const DUR_KEYS = ['min', 'maxSit', 'coding', 'age'];
 
   const PHRASES = {
     water: [
@@ -44,19 +58,19 @@
       'Мозгу нужна вода, чтобы ловить баги. Глоток-другой? 💧',
     ],
     waterBad: [
-      'Я превращаюсь в изюм... ВОДЫ! 🥵',
+      'Я превращаюсь в изюм… ВОДЫ! 🥵',
       'Это уже не жаба, а сухарик. Срочно стакан воды!',
       'Error 418: I\'m a dry frog. Полей меня 💧',
     ],
     move: [
-      'Ты сидишь {min} мин. Я начинаю каменеть 🗿',
+      'Ты сидишь {min}. Я начинаю каменеть 🗿',
       'Мои лапки уже гранитные. Встань, разомнись!',
       'Сидячий режим — это тоже техдолг. Разминка!',
       'Пора на rebase позвоночника. Встань на пару минут 🤸',
     ],
     moveBad: [
       'Всё, я памятник. Спаси меня — встань и подвигайся! 🗿',
-      'Сидишь {min} мин. Меня уже можно ставить в парке.',
+      'Сидишь {min}. Меня уже можно ставить в парке.',
     ],
     exercise: [
       'Встань и потянись к потолку на 10 секунд.',
@@ -78,8 +92,13 @@
       'Лапки снова гнутся. Разминка №{n} 🤸',
     ],
     back: [
-      'С возвращением! Перерыв {min} мин засчитан — камень осыпался 👍',
-      'О, вернулся! {min} мин без стула — отлично 👍',
+      'С возвращением! Перерыв {min} засчитан — камень осыпался 👍',
+      'О, ты снова тут! {min} без стула — отлично 👍',
+    ],
+    // перерыв засчитан, но жаба мертва: камень уже не осыпется
+    backDead: [
+      'Перерыв {min} засчитан. Жаль, что мне он уже не поможет 🪦',
+      'С возвращением. Я всё ещё памятник — высиди новую жабу 🥚',
     ],
     morning: [
       'Доброе утро! Начнём день со стакана воды? 💧',
@@ -92,14 +111,13 @@
       'Не забудь git push. И воды попить.',
       'Ква-ква === 0b10. Это всё, что я знаю о бинарке.',
       'Ты сегодня пишешь отличный код. Наверное.',
-      'Сегодня: 💧 {drinks} · 🤸 {breaks} · ⌨️ {coding} мин',
-      'Сегодня: 💧 {drinks} · 🤸 {breaks} · ⌨️ {coding} мин',
-      'Самый долгий заход без перерыва сегодня: {maxSit} мин',
+      'Сегодня: 💧 {drinks} · 🤸 {breaks} · ⌨️ {coding}',
+      'Самый долгий заход без перерыва сегодня: {maxSit}',
     ],
     critical_water: [
-      '⚠️ Уровень воды критический. Ещё немного — и я stack trace из песка 🥵',
+      '⚠️ Уровень воды критический. Ещё немного — и от меня останется stack trace из песка 🥵',
       'Чувствую себя как сервер без кулера. ВОДЫ, срочно!',
-      'Я уже вижу свет в конце туннеля... это монитор. Дай попить!',
+      'Я уже вижу свет в конце туннеля… это монитор. Дай попить!',
       'Мой HP как покрытие тестами в legacy — почти ноль. Стакан воды!',
     ],
     critical_move: [
@@ -109,15 +127,15 @@
       'Последний шанс на rollback: встань и подвигайся 🗿',
     ],
     death_dry: [
-      'Жабка #{gen} засохла в изюм. Прожила {age} мин. 404: water not found 🪦',
+      'Жабка #{gen} засохла в изюм. 404: water not found 🪦',
       'Process frog exited with code DRY. Покойся с миром, #{gen} 🪦',
       'Жабка #{gen} рассыпалась песком. Последний коммит: «пить хочу» 🪦',
       'Garbage collector собрал Жабку #{gen}. Причина: обезвоживание 🪦',
     ],
     death_stone: [
-      'Жабка #{gen} окаменела насмерть. Теперь она нефритовая статуэтка 🗿🪦',
-      'FATAL: frog #{gen} hardened. Слишком долго сидели. Прожила {age} мин 🪦',
-      'Жабка #{gen} рассыпалась на камушки. Сидячий техдолг погашен ею 🪦',
+      'Жабка #{gen} окаменела. Теперь она нефритовая статуэтка 🗿',
+      'FATAL: frog #{gen} hardened. Ты слишком долго сидишь 🪦',
+      'Жабка #{gen} рассыпалась на камушки. Техдолг закрыт 🪦',
       'Жабка #{gen} стала памятником работе без перерывов 🪦',
     ],
     reborn: [
@@ -126,12 +144,22 @@
       'Новая жаба, новый спринт. Я #{gen}, и я верю в тебя 🐣',
       'git checkout -b frog-{gen}. Начнём с чистого листа 🐣',
     ],
-    paused: ['Ок, не мешаю. Пауза на {min} мин 🤫'],
+    paused: ['Ок, не мешаю. Пауза на {min} 🤫'],
     resumed: ['Я снова на посту 🐸'],
+    resumedDead: ['Пауза закончилась. А я всё ещё памятник 🪦'],
   };
 
-  function say(kind, ctx, rnd) {
-    return fill(pick(PHRASES[kind], rnd), ctx);
+  // last — память «какая фраза была в прошлый раз» по ключу: одна реплика не выпадает дважды подряд
+  function say(kind, ctx, rnd, last) {
+    const arr = PHRASES[kind];
+    let s = pick(arr, rnd);
+    if (last) {
+      if (arr.length > 1 && s === last[kind]) s = arr[(arr.indexOf(s) + 1) % arr.length];
+      last[kind] = s;
+    }
+    const c = Object.assign({}, ctx);
+    for (const k of DUR_KEYS) if (typeof c[k] === 'number') c[k] = fmtDur(c[k]);
+    return fill(s, c);
   }
 
   function newDay(t) {
@@ -159,13 +187,25 @@
     return tot;
   }
 
-  function createPet(saved, settings, now) {
+  // Интервалы из frog.json/демо: ноль, NaN или отрицательное сломали бы таймеры — берём значение по умолчанию
+  function cleanSettings(s) {
+    const out = Object.assign({}, DEFAULTS, s || {});
+    for (const k of ['waterEvery', 'moveEvery', 'breakAfter', 'nagEvery']) {
+      if (!(typeof out[k] === 'number' && Number.isFinite(out[k]) && out[k] > 0)) out[k] = DEFAULTS[k];
+    }
+    return out;
+  }
+
+  // rnd — свой генератор случайных чисел (для воспроизводимой съёмки), по умолчанию Math.random
+  function createPet(saved, settings, now, rnd) {
     now = now || Date.now();
-    let S = Object.assign({}, DEFAULTS, settings || {});
+    let S = cleanSettings(settings);
+    const lastPhrase = {};
+    const talk = (kind, c) => say(kind, c, rnd, lastPhrase);
     const st = Object.assign({
       waterMs: 0, sitMs: 0, pausedUntil: 0,
       nextNag: { water: 0, move: 0 }, nags: { water: 0, move: 0 },
-      lastTick: 0, away: false, awayStart: 0, idleSec: 0,
+      lastTick: 0, clockBack: 0, away: false, awayStart: 0, idleSec: 0,
       day: newDay(now), history: [],
       life: 'alive', cause: null, diedAt: 0, generation: 1, bornAt: now,
       crit: { water: false, move: false }, graveyard: [],
@@ -223,7 +263,14 @@
 
     function tick(t, idleSec) {
       const events = [];
-      const dt = st.lastTick ? Math.max(0, t - st.lastTick) : 0;
+      if (!Number.isFinite(t)) return events; // мусорное время не должно навсегда испортить день и таймеры
+      // Часы ушли назад: живём по новым часам, но на один тик помним, докуда уже дошли. Если часы
+      // сразу вернулись (разовый сбой), время между «скачками» не считается сном и не воскрешает/не лечит
+      // жабу; если следующий тик идёт по новым часам — перевод настоящий, отметку забываем.
+      let from = st.lastTick;
+      if (st.clockBack) { if (t >= st.clockBack) from = Math.max(from, st.clockBack); st.clockBack = 0; }
+      if (from && t < from) st.clockBack = from;
+      const dt = from ? Math.max(0, t - from) : 0;
       st.lastTick = t;
       st.idleSec = idleSec || 0;
       const newDayStarted = rollDay(t);
@@ -236,14 +283,15 @@
         if (!dead()) {
           // долгое отсутствие: стакан почти пуст, но не «добиваем» жабу вчерашней жаждой;
           // утро — почти чистый лист (0.9 интервала)
-          st.waterMs = morning ? every('water') * 0.9 : clamp(st.waterMs, every('water') * 0.9, critWaterMs());
+          // после 2–6 ч без утра стакан пуст: жаба сразу просит воды (README «после сна дольше 2 часов»)
+          st.waterMs = morning ? every('water') * 0.9 : clamp(st.waterMs, every('water'), critWaterMs());
           st.nextNag.water = 0;
           st.nags.water = 0;
           st.crit.water = false;
         }
         if (morning) {
           if (dead()) events.push(revive(t)); // утро воскрешает жабу
-          events.push({ type: 'morning', text: say('morning', ctx()) });
+          events.push({ type: 'morning', text: talk('morning', ctx()) });
         }
         return events;
       }
@@ -251,7 +299,7 @@
       const paused = t < st.pausedUntil;
       if (st.pausedUntil && !paused) {
         st.pausedUntil = 0;
-        events.push({ type: 'resumed', text: say('resumed', ctx()) });
+        events.push({ type: 'resumed', text: talk(dead() ? 'resumedDead' : 'resumed', ctx()) });
       }
       const idleMs = st.idleSec * SEC;
       const breakMs = S.breakAfter * MIN;
@@ -265,7 +313,7 @@
         const min = Math.round((t - st.awayStart) / MIN);
         st.day.autoBreaks++;
         st.totals.autoBreaks++;
-        events.push({ type: 'back', min, text: say('back', ctx({ min })) });
+        events.push({ type: 'back', min, text: talk(dead() ? 'backDead' : 'back', ctx({ min })) });
       }
 
       // Пока жаба мертва, время до смерти не тикает
@@ -283,7 +331,8 @@
       // Смерть и «при смерти» — только когда человек за компом и не на паузе
       if (!paused && !st.away && !dead() && S.deathEnabled) {
         for (const kind of ['water', 'move']) {
-          if (ratio(kind) >= deathAt(kind)) {
+          // смерть только после предупреждения: если тик перепрыгнул зону critical, сначала critical
+          if (ratio(kind) >= deathAt(kind) && st.crit[kind]) {
             events.push(die(t, kind === 'water' ? 'dry' : 'stone'));
             return events;
           }
@@ -291,7 +340,7 @@
         for (const kind of ['water', 'move']) {
           if (doom(kind) >= CRITICAL - 1e-9 && !st.crit[kind]) {
             st.crit[kind] = true;
-            events.push({ type: 'critical', kind, text: say('critical_' + kind, ctx()) });
+            events.push({ type: 'critical', kind, text: talk('critical_' + kind, ctx()) });
           }
         }
       }
@@ -304,9 +353,17 @@
             st.nags[kind]++;
             const bad = r >= 1.5;
             const key = kind + (bad ? 'Bad' : '');
-            const ev = { type: 'remind', kind, level: r, nag: st.nags[kind], text: say(key, ctx()) };
-            if (kind === 'move') ev.tip = say('exercise', ctx());
+            const ev = { type: 'remind', kind, level: r, nag: st.nags[kind], text: talk(key, ctx()) };
+            if (kind === 'move') ev.tip = talk('exercise', ctx());
             events.push(ev);
+          }
+        }
+        // повторы воды и движения не чередуются через 5 мин: ближайший повтор другого таймера
+        // сдвигается к этому, и дальше они приходят вместе раз в nagEvery («Позже» только отодвигает)
+        if (events.some((e) => e.type === 'remind')) {
+          const next = t + S.nagEvery * MIN;
+          for (const kind of ['water', 'move']) {
+            if (st.nextNag[kind] > t && st.nextNag[kind] < next) st.nextNag[kind] = next;
           }
         }
       }
@@ -326,7 +383,7 @@
       st.totals.longestLifeMin = Math.max(st.totals.longestLifeMin, age);
       st.graveyard.push({ generation: st.generation, cause, bornAt: st.bornAt, diedAt: t, ageMin: age });
       st.graveyard = st.graveyard.slice(-GRAVEYARD_MAX);
-      const text = say(cause === 'dry' ? 'death_dry' : 'death_stone', ctx({ gen: st.generation, age }));
+      const text = talk(cause === 'dry' ? 'death_dry' : 'death_stone', ctx({ gen: st.generation, age }));
       return { type: 'death', cause, generation: st.generation, ageMin: age, text };
     }
 
@@ -347,7 +404,7 @@
       st.nextNag = { water: 0, move: 0 };
       st.nags = { water: 0, move: 0 };
       st.crit = { water: false, move: false };
-      return { type: 'reborn', generation: st.generation, text: say('reborn', ctx({ gen: st.generation })) };
+      return { type: 'reborn', generation: st.generation, text: talk('reborn', ctx({ gen: st.generation })) };
     }
 
     function drink(t) {
@@ -361,7 +418,7 @@
       }
       st.day.drinks++;
       st.totals.drinks++;
-      return { type: 'drink', n: st.day.drinks, text: say('drink', ctx({ n: st.day.drinks })) };
+      return { type: 'drink', n: st.day.drinks, text: talk('drink', ctx({ n: st.day.drinks })) };
     }
 
     function stretch(t) {
@@ -370,7 +427,7 @@
       endSitting();
       st.day.breaks++;
       st.totals.breaks++;
-      return { type: 'stretch', n: st.day.breaks, text: say('stretch', ctx({ n: st.day.breaks })) };
+      return { type: 'stretch', n: st.day.breaks, text: talk('stretch', ctx({ n: st.day.breaks })) };
     }
 
     function snooze(kind, t, minutes) {
@@ -379,12 +436,12 @@
 
     function pause(t, minutes) {
       st.pausedUntil = minutes ? t + minutes * MIN : 0;
-      return minutes ? { type: 'paused', min: minutes, text: say('paused', ctx({ min: minutes })) }
-                     : { type: 'resumed', text: say('resumed', ctx()) };
+      return minutes ? { type: 'paused', min: minutes, text: talk('paused', ctx({ min: minutes })) }
+                     : { type: 'resumed', text: talk(dead() ? 'resumedDead' : 'resumed', ctx()) };
     }
 
     function poke() {
-      return { type: 'poke', text: say('poke', ctx()) };
+      return { type: 'poke', text: talk('poke', ctx()) };
     }
 
     function view(t) {
@@ -431,7 +488,7 @@
       graveyard() { return JSON.parse(JSON.stringify(st.graveyard)); },
       setSettings(s) {
         const prev = S;
-        S = Object.assign({}, DEFAULTS, s);
+        S = cleanSettings(s);
         if (dead()) return;
         // интервал уменьшили на лету — доля пути сохраняется, а не скачет к смерти
         if (every('water') < every('water', prev)) st.waterMs *= every('water') / every('water', prev);
@@ -453,5 +510,5 @@
     };
   }
 
-  return { createPet, say, DEFAULTS, PHRASES, MIN, HOUR, dayKey, DEATH_WATER, DEATH_STONE, CRITICAL };
+  return { createPet, say, fmtDur, DEFAULTS, PHRASES, MIN, HOUR, dayKey, DEATH_WATER, DEATH_STONE, CRITICAL };
 });
