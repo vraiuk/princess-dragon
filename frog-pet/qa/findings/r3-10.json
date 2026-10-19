@@ -1,0 +1,83 @@
+[
+  { "id": "r1-10-01", "status": "closed", "severity": "medium", "area": "main",
+    "title": "Навигация и новые окна заблокированы",
+    "verify": "В e2e-прогоне все попытки увести окно настроек на file:///etc/hosts остались на settings.html: location.href, meta refresh, <a> и <a target=_blank>, form.submit, window.open (вернул null, новых окон 0), history.back/go(-5). will-navigate получает preventDefault, setWindowOpenHandler возвращает deny. Перетаскивание файла через CDP Input.dispatchDragEvent под xvfb не навигирует даже без обработчика (контрольный прогон), поэтому drop закрыт только по коду: навигация из рендера проходит через will-navigate.",
+    "evidence": "scratchpad r3-10/attack.log, drop.js, drop-control.js; app/main.js:816-820" },
+
+  { "id": "r1-10-02", "status": "closed", "severity": "medium", "area": "packaging",
+    "title": "Electron 44.5.1, поддерживаемая ветка",
+    "verify": "node_modules/electron 44.5.1. Остаток вынесен в r3-10-03: версия закреплена жёстко, при этом уже вышла 44.9.0.",
+    "evidence": "package.json:21" },
+
+  { "id": "r1-10-03", "status": "open", "severity": "low", "area": "packaging",
+    "title": "Хуки отключены в упакованной сборке, fuses не включены",
+    "verify": "Упакованную сборку имитировал так: dist Electron, бинарник переименован в zhabka, приложение в resources/app, app.isPackaged=true. FROG_TEST_SCRIPT (в том числе frog_test_script и FROG_TEST_SCRIPT_) и FROG_SNAPSHOT игнорируются: скрипт не запустился, PNG не записан. Эта часть закрыта. Обход через fuses остаётся: `ELECTRON_RUN_AS_NODE=1 zhabka -e ...` исполняет произвольный код (node v24.21.0), `--inspect=9333` открывает отладчик. NODE_OPTIONS Electron в упакованной сборке сам режет. @electron/fuses и afterPack в package.json нет, поэтому проверять корректность сборки с fuses нечего. FROG_DEBUG и FROG_SHOWCASE от isPackaged не зависят, но безвредны: только логи и выбор сценария из SCRIPTS.",
+    "evidence": "scratchpad r3-10/pkg, log-inspect; app/main.js:40",
+    "fix": "afterPack с @electron/fuses (уже лежит в node_modules транзитивно): RunAsNode=false, EnableNodeCliInspectArguments=false, EnableNodeOptionsEnvironmentVariable=false, OnlyLoadAppFromAsar=true." },
+
+  { "id": "r1-10-04", "status": "closed", "severity": "low", "area": "main",
+    "title": "Проверка IPC работает",
+    "verify": "Мусор не прошёл: __proto__, constructor, toString, hasOwnProperty, строка в 1 МБ, '' и null в action, open и setSetting; NaN, ±Infinity, '1e400', вложенные объекты и -0 в minutes (pause и snooze); kind={toString} и kind='__proto__'. Исключений в main нет, в nextNag остались только water и move, пауза не больше 1440 мин, числовые настройки в своих границах. app:set с настоящим senderFrame окна жабы игнорируется, action из окна настроек тоже. Мосты не пересекаются: в окне жабы frogApp undefined, в окне настроек frog undefined. Остатки описаны в r3-10-01 и r3-10-04.",
+    "evidence": "scratchpad r3-10/attack.log" },
+
+  { "id": "r1-10-05", "status": "closed", "severity": "low", "area": "main",
+    "title": "Обработчики разрешений запрещают всё",
+    "verify": "app/main.js:829-830; сценарий qa/e2e/security.js проверяет Notification.permission и geolocation (обе denied).",
+    "evidence": "app/main.js:829" },
+
+  { "id": "r1-10-06", "status": "open", "severity": "low", "area": "main",
+    "title": "Строгий CSP только в trophies.html, в index, settings и welcome по-прежнему default-src 'self'",
+    "verify": "В рантайме окна жабы и настроек с CSP default-src 'self' прочитали file:///etc/hostname через fetch и XHR и загрузили его во iframe, потому что под file:// 'self' означает любой локальный файл. В окне трофеев тот же iframe заблокирован (ERR_BLOCKED_BY_CSP). Для эксплуатации нужен чужой JS в рендере. Сети нет, данные не вынести, поэтому severity low.",
+    "evidence": "scratchpad r3-10/attack.log: 'fetch file settings => READ', 'xhr file pet => READ', 'frames in settings => [file:///etc/hostname]'",
+    "file": "app/renderer/index.html:6, settings.html:6, welcome.html:6",
+    "fix": "Политику из trophies.html разнести по остальным трём файлам; в index.html оставить img-src 'self' data: и при необходимости media-src." },
+
+  { "id": "r1-10-07", "status": "open", "severity": "low", "area": "landing",
+    "title": "Текст про xattr исправлен, SHA-256 dmg по-прежнему не публикуется",
+    "verify": "Сайт и README теперь используют `xattr -dr com.apple.quarantine`, предупреждают об источниках и описывают Sequoia. Эта часть закрыта. В .github/workflows/frog-pet.yml нет ни shasum, ни .sha256: свериться пользователю не с чем.",
+    "evidence": "index.html:319-327, README.md:94, .github/workflows/frog-pet.yml",
+    "fix": "Шаг `shasum -a 256 dist/*.dmg > dist/SHA256SUMS` и выкладка этого файла в релиз; на лендинге одна строка, как проверить сумму." },
+
+  { "id": "r1-10-08", "status": "closed", "severity": "low", "area": "landing",
+    "title": "Сторонних шрифтов нет",
+    "verify": "grep googleapis|gstatic в index.html ничего не находит; index.html:358 уточняет обещание и для сайта.",
+    "evidence": "index.html:358" },
+
+  { "id": "r1-10-09", "status": "closed", "severity": "low", "area": "main",
+    "title": "Запись через tmp, fsync и rename, frog.json 0600",
+    "verify": "Новый frog.json создаётся с правами 600, каталог userData 700, вторая и следующие битые копии получают метку времени. Остаток вынесен в r3-10-02.",
+    "evidence": "scratchpad r3-10 (тест режимов)" },
+
+  { "id": "r3-10-01", "severity": "low", "area": "main",
+    "title": "Поток app:set или action надолго блокирует main: на каждое сообщение синхронный save с fsync, rebuildMenu и pushApp, ограничения частоты нет",
+    "repro": "Окно настроек: for (let i=0;i<3000;i++) frogApp.setSetting('sound', i%2===0) → main не отвечает около 20 с: жаба замирает, меню-бар не реагирует. 3000 × frog.action('dragged') из окна жабы держат main около 10 с и заодно выдают ачивки drag1 и drag10.",
+    "expected": "setSetting и act пишут файл через saveSoon(), как остальные частые действия; повторное значение настройки не вызывает save и rebuildMenu.",
+    "actual": "setSetting вызывает save() синхронно с fsync на каждое сообщение. Нужен скомпрометированный рендер, поэтому low.",
+    "evidence": "scratchpad r3-10/attack.log: 'flood app:set ... total 20108', 'flood dragged ms => 9975'",
+    "file": "app/main.js:653",
+    "fix": "if (settings[key] === val) return; save() → saveSoon()." },
+
+  { "id": "r3-10-02", "severity": "low", "area": "main",
+    "title": "Копии .broken наследуют права исходного файла (0644) и не ротируются; оставшийся frog.json.tmp сохраняет старые права",
+    "repro": "userData/frog.json с режимом 0644 и битым JSON, рядом frog.json.tmp с режимом 0644; трижды запустить, перед каждым запуском снова портить файл → frog.json.broken и frog.json.broken-<ts> получают 644, копии копятся без ограничения. Если frog.json.tmp уже существует, openSync(…, 0o600) не меняет его режим, и первый save переименует его в frog.json с правами 644.",
+    "expected": "Копии и tmp с правами 0600 (fchmod или chmod после copyFileSync), хранить последние 3 копии.",
+    "actual": "Содержимое файла не чувствительное, а ~/Library на macOS закрыт 0700, поэтому это косметика.",
+    "evidence": "stat: frog.json 600, frog.json.broken* 644",
+    "file": "app/main.js:75-76, 120" },
+
+  { "id": "r3-10-03", "severity": "low", "area": "packaging",
+    "title": "Electron закреплён жёстко на 44.5.1 (вышел 30.09), уже есть 44.9.0; Dependabot и проверки в CI нет",
+    "repro": "npm view electron@44 version → последняя 44.9.0; ls .github → нет dependabot.yml.",
+    "expected": "Патч-релизы ветки 44 с исправлениями Chromium приходят автоматически.",
+    "actual": "Точная версия без каретки: патчи безопасности ставятся только руками.",
+    "file": "package.json:21",
+    "fix": "\"electron\": \"~44.9.0\" и .github/dependabot.yml для npm в /frog-pet." },
+
+  { "id": "r3-10-04", "severity": "low", "area": "main",
+    "title": "from() доверяет senderFrame.url, а рендер меняет его через history.pushState в пределах file://",
+    "repro": "Окно настроек: history.pushState({}, '', 'file:///etc/hosts') → webContents.getURL() возвращает file:///etc/hosts без навигации; после этого frogApp.setSetting отвергается.",
+    "expected": "Проверка по URL не считается границей безопасности. Пока она работает только как самоблокировка: обратный приём, когда чужая страница подменяет URL на app/renderer/…, требует чужого документа в главном фрейме, а это перекрыто запретом навигации и проверкой f.parent.",
+    "actual": "Защита держится на сравнении окна (w === win или appWins) и главного фрейма. Это нормально, но комментарий в коде переоценивает проверку URL.",
+    "evidence": "scratchpad r3-10/attack.log: 'url after pushState => file:///etc/hosts', 'setSetting after pushState applied => false'",
+    "file": "app/main.js:764-772" }
+]
