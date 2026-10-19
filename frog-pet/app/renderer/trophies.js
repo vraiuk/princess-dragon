@@ -23,27 +23,19 @@
       });
     }
     const day = { date: dk(now), drinks: 4, breaks: 2, autoBreaks: 3, codingMs: 297 * MIN, maxSitMs: 84 * MIN };
-    const A = (id, icon, title, desc, kind, rarity, at, progress) => ({
-      id, icon, title, desc, kind, rarity, hidden: kind === 'secret', unlocked: !!at, at: at || 0, progress: progress || null,
+    // ачивки из настоящих DEFS (../achievements.js) в форме list(): секретные до получения замаскированы
+    const Ach = window.FrogAchievements;
+    const GOT = { first_drink: 13, hydrated: 6, first_stretch: 12, graceful: 2, phoenix: 9, iron_butt: 5.1, jade: 4, raisin: 9, gargoyle: 3, poke50: 1, drag1: 7 };
+    const PROG = { aquarium: 63, stretch100: 41, streak3: 2, streak7: 2, alive3: 1, alive7: 1, alive30: 1, mummy: 1, monument: 2, tamagotchi: 3, snooze10: 6, drag10: 4 };
+    const achievements = (Ach ? Ach.DEFS : []).map((d) => {
+      const at = GOT[d.id] ? Math.round(now - GOT[d.id] * DAY) : 0;
+      const hidden = d.kind === 'secret' && !at, H = Ach.HIDDEN;
+      return {
+        id: d.id, kind: d.kind, rarity: d.rarity, hidden, unlocked: !!at, at,
+        title: hidden ? H.title : d.title, desc: hidden ? H.desc : d.desc, icon: hidden ? H.icon : d.icon,
+        progress: d.max && !hidden ? { cur: at ? d.max : Math.min(d.max, PROG[d.id] || 0), max: d.max } : null,
+      };
     });
-    const achievements = [
-      A('first_drink', '💧', 'Первый глоток', 'Выпить первый стакан воды', 'good', 'common', now - 13 * DAY),
-      A('hydro_8', '🌊', 'Гидро-сеньор', '8 стаканов воды за день', 'good', 'rare', now - 6 * DAY),
-      A('hydro_100', '🐳', 'Кит-девелопер', '100 стаканов за всё время', 'good', 'epic', 0, { cur: 63, max: 100 }),
-      A('stretch_5', '🤸', 'Гибкий как Agile', '5 разминок за день', 'good', 'common', now - 2 * DAY),
-      A('streak_7', '🔥', 'Неделя без техдолга', '7 дней подряд выполнять норму воды', 'good', 'epic', 0, { cur: 4, max: 7 }),
-      A('streak_30', '👑', 'Жабий император', '30 дней подряд норма воды и разминок', 'good', 'legendary', 0, { cur: 4, max: 30 }),
-      A('immortal', '🧬', 'Бессмертный билд', 'Жаба прожила 7 дней', 'good', 'legendary', 0, { cur: 2, max: 7 }),
-      A('iron_butt', '🪑', 'Железножопая жаба', '2 часа без перерыва', 'bad', 'rare', now - 5 * DAY - 3 * 3600e3),
-      A('jade', '🗿', 'Нефритовая жаба', 'Жаба окаменела насмерть', 'bad', 'epic', now - 4 * DAY),
-      A('raisin', '🍇', 'Изюм', 'Жаба засохла насмерть', 'bad', 'epic', now - 9 * DAY),
-      A('night_owl', '🦉', 'Ночной деплой', 'Кодить после 2 ночи', 'bad', 'rare', 0),
-      A('snoozer', '😴', 'Отложу на потом', 'Отложить напоминание 10 раз', 'bad', 'common', 0, { cur: 6, max: 10 }),
-      A('serial', '💀', 'Серийный жабоубийца', 'Погубить 5 жаб', 'bad', 'legendary', 0, { cur: 3, max: 5 }),
-      A('poke50', '👉', 'Пальпация', 'Тыкнуть жабу 50 раз', 'secret', 'rare', now - 1 * DAY),
-      A('drag', '🛸', 'Похищение', '???', 'secret', 'epic', 0),
-      A('konami', '🎮', 'Чит-код', '???', 'secret', 'legendary', 0),
-    ];
     const graveyard = [
       { generation: 1, cause: 'dry', bornAt: now - 13 * DAY, diedAt: now - 9 * DAY - 5 * 3600e3, ageMin: 5520 },
       { generation: 2, cause: 'stone', bornAt: now - 9 * DAY, diedAt: now - 4 * DAY - 2 * 3600e3, ageMin: 7080 },
@@ -70,6 +62,8 @@
   const $ = (s) => document.querySelector(s);
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const num = (v) => (Number(v) || 0);
+  // битые записи из frog.json (null, числа) пропускаем, а не роняем всю вкладку
+  const objs = (v) => (Array.isArray(v) ? v.filter((x) => x && typeof x === 'object') : []);
   const plural = (n, one, few, many) => {
     const a = Math.abs(n) % 100, b = a % 10;
     if (a > 10 && a < 20) return many;
@@ -103,12 +97,25 @@
 
   function setTab(t) {
     tab = t;
-    document.querySelectorAll('.tr-tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === t)));
+    document.querySelectorAll('.tr-tabs button').forEach((b) => {
+      b.setAttribute('aria-selected', String(b.dataset.tab === t));
+      b.tabIndex = b.dataset.tab === t ? 0 : -1;
+    });
     for (const id of TABS) $('#pane-' + id).hidden = id !== t;
     try { history.replaceState(null, '', '#' + t); } catch (e) { /* file:// */ }
     render();
   }
   document.querySelectorAll('.tr-tabs button').forEach((b) => b.addEventListener('click', () => setTab(b.dataset.tab)));
+  // паттерн ARIA Tabs: стрелки, Home/End переключают вкладку и переносят фокус
+  $('.tr-tabs').addEventListener('keydown', (e) => {
+    const i = TABS.indexOf(tab);
+    const j = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: TABS.length - 1 }[e.key];
+    if (j === undefined) return;
+    e.preventDefault();
+    const t = TABS[(j + TABS.length) % TABS.length];
+    setTab(t);
+    $('#tab-' + t).focus();
+  });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') app.close && app.close();
     if ((e.metaKey || e.ctrlKey) && /^[123]$/.test(e.key)) setTab(TABS[+e.key - 1]);
@@ -116,6 +123,8 @@
 
   // ---------- ачивки ----------
   const RARITY = { common: 'Обычная', rare: 'Редкая', epic: 'Эпическая', legendary: 'Легендарная' };
+  // подсказка скрытой ачивки приходит из list() (a.desc); это запасной вариант для старых данных
+  const HIDDEN_DESC = (window.FrogAchievements && window.FrogAchievements.HIDDEN && window.FrogAchievements.HIDDEN.desc) || 'Секретная ачивка. Жаба не скажет 🤫';
   const KINDS = [['all', 'Все'], ['good', '🌿 Хорошие'], ['bad', '💩 Позорные'], ['secret', '🔮 Секретные']];
 
   function card(a) {
@@ -128,7 +137,7 @@
       <div class="ach-icon">${hide ? '🔒' : esc(a.icon || '🏅')}</div>
       <div class="ach-body">
         <div class="ach-title">${hide ? '???' : esc(a.title)}</div>
-        <div class="ach-desc">${hide ? 'Секретная ачивка. Ищи сам — жаба не скажет.' : esc(a.desc)}</div>
+        <div class="ach-desc">${esc(hide ? (a.hidden && a.desc) || HIDDEN_DESC : a.desc)}</div>
         ${p ? `<div class="bar"><i style="width:${pct}%"></i></div><div class="ach-prog">${num(p.cur)} / ${num(p.max)}</div>` : ''}
         <div class="ach-foot">
           <span class="rar">${esc(RARITY[a.rarity] || 'Обычная')}</span>
@@ -139,7 +148,7 @@
   }
 
   function renderAch() {
-    const list = (data.achievements || []).slice();
+    const list = objs(data.achievements);
     const got = list.filter((a) => a.unlocked).length;
     const pct = list.length ? got / list.length : 0;
     const R = 26, C = 2 * Math.PI * R;
@@ -150,6 +159,8 @@
       .filter((a) => filter === 'all' || a.kind === filter)
       .sort((a, b) => (b.unlocked - a.unlocked) || (a.unlocked ? num(b.at) - num(a.at) : 0) ||
         ((order[a.kind] || 0) - (order[b.kind] || 0)) || ((rar[a.rarity] || 0) - (rar[b.rarity] || 0)));
+    // innerHTML пересоздаёт чипы: возвращаем фокус на тот же чип, иначе он улетает на body
+    const fc = document.activeElement && document.activeElement.closest && document.activeElement.closest('#pane-ach .chip');
     $('#pane-ach').innerHTML = `
       <div class="summary">
         <svg class="ring" viewBox="0 0 64 64" aria-hidden="true">
@@ -161,10 +172,11 @@
           <div class="sum-big">Получено ${got} из ${list.length}</div>
           <div class="sum-sub">🌿 ${cnt('good')} · 💩 ${cnt('bad')} · 🔮 ${cnt('secret')}</div>
         </div>
-        <div class="chips">${KINDS.map(([k, t]) => `<button class="chip${filter === k ? ' on' : ''}" data-f="${k}">${t}</button>`).join('')}</div>
+        <div class="chips">${KINDS.map(([k, t]) => `<button class="chip${filter === k ? ' on' : ''}" data-f="${k}" aria-pressed="${filter === k}">${t}</button>`).join('')}</div>
       </div>
       ${shown.length ? `<div class="grid">${shown.map(card).join('')}</div>` : '<div class="empty">Тут пока пусто. Жаба верит в тебя 🐸</div>'}`;
     $('#pane-ach').querySelectorAll('.chip').forEach((b) => b.addEventListener('click', () => { filter = b.dataset.f; last.ach = null; render(); }));
+    if (fc) { const b = $('#pane-ach .chip[data-f="' + fc.dataset.f + '"]'); if (b) b.focus(); }
   }
 
   // ---------- статистика ----------
@@ -189,7 +201,7 @@
     return out;
   }
 
-  function chart(days, field, cls, unit) {
+  function chart(days, field, cls, unit, label) {
     const W = 640, H = 128, top = 20, bot = 30, gap = 8;
     const max = Math.max(1, ...days.map((d) => d[field]));
     const bw = (W - gap * (days.length - 1)) / days.length;
@@ -199,7 +211,7 @@
     days.forEach((d, i) => {
       const v = d[field], h = v ? Math.max(4, v / max * ch) : 2;
       const x = i * (bw + gap), y = top + ch - h;
-      const lbl = field === 'coding' && v >= 60 ? (v / 60).toFixed(1).replace('.0', '').replace('.', ',') + 'ч' : String(v);
+      const lbl = field === 'coding' && v >= 60 ? (v / 60).toFixed(1).replace('.0', '').replace('.', ',') + ' ч' : String(v);
       const dt = new Date(d.t);
       bars += `<g class="col${d.today ? ' today' : ''}${v ? '' : ' zero'}">
         <title>${esc(fmtDate(d.t))}: ${v} ${unit}</title>
@@ -209,7 +221,7 @@
         <text class="wd" x="${(x + bw / 2).toFixed(1)}" y="${H - 3}" text-anchor="middle">${wd[dt.getDay()]}</text>
       </g>`;
     });
-    return `<svg class="chart ${cls}" viewBox="0 0 ${W} ${H}" role="img">
+    return `<svg class="chart ${cls}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(label)}">
       <line class="base" x1="0" x2="${W}" y1="${top + ch + 0.5}" y2="${top + ch + 0.5}"/>${bars}</svg>`;
   }
 
@@ -217,12 +229,13 @@
     const sum = days.reduce((s, d) => s + d[field], 0);
     const active = days.filter((d) => d[field] > 0).length || 1;
     const today = days[days.length - 1][field];
+    const m = [fmt(today), fmt(Math.round(sum / active)), field === 'coding' ? fmtHours(sum) : fmt(sum)];
     return `<div class="panel">
       <div class="panel-head">
         <div class="panel-title"><span class="dot ${cls}"></span>${icon} ${title}</div>
-        <div class="panel-meta">сегодня <b>${fmt(today)}</b> · в среднем <b>${fmt(Math.round(sum / active))}</b> · за 14 дней <b>${field === 'coding' ? fmtHours(sum) : fmt(sum)}</b></div>
+        <div class="panel-meta">сегодня <b>${m[0]}</b> · в среднем <b>${m[1]}</b> · за 14 дней <b>${m[2]}</b></div>
       </div>
-      ${chart(days, field, cls, unit)}
+      ${chart(days, field, cls, unit, `${title} по дням за 14 дней: сегодня ${m[0]}, в среднем ${m[1]}, всего ${m[2]}`)}
     </div>`;
   }
 
@@ -233,7 +246,7 @@
     const hm = (min) => fmtDur(min);
     const tiles = [
       ['💧', num(T.drinks), plural(num(T.drinks), 'стакан', 'стакана', 'стаканов') + ' воды всего'],
-      ['🤸', num(T.breaks) + num(T.autoBreaks), 'разминок и перерывов'],
+      ['🤸', num(T.breaks) + num(T.autoBreaks), plural(num(T.breaks) + num(T.autoBreaks), 'перерыв', 'перерыва', 'перерывов') + ' (вместе с разминками)'],
       ['⌨️', fmtHours(num(T.codingMs) / MIN), 'за компом всего'],
       ['🪑', fmtDur(num(T.maxSitMs) / MIN), 'самый долгий заход без перерыва'],
       ['🧬', fmtDur(T.longestLifeMin), 'самая долгая жизнь жабы'],
@@ -254,7 +267,7 @@
     'Её последний коммит был без тестов.',
     'Ушла в прод в пятницу вечером.',
     'Так и не дождалась code review.',
-    'Работала на её машине.',
+    'У неё на машине всё работало.',
     'Пала жертвой бесконечного цикла.',
     'NullPointerException в самом сердце.',
     'Её TODO так и остались TODO.',
@@ -267,14 +280,14 @@
   const EPI = {
     dry: [
       'Последние слова: «щас, только билд дособерётся».',
-      'Пересохла быстрее, чем кэш в npm.',
-      'Кожа шелушилась, как legacy-код. Воды так и не дали.',
-      'waterLevel === 0. Баг закрыт как «won\'t fix».',
-      'Хотела стакан воды. Получила 418 I\'m a teapot.',
+      'Высохла быстрее, чем твой npm install.',
+      'Мечтала о болоте. Получила пустыню.',
+      'Пила только кофе. Чужой.',
+      'Ждала воду до последнего коммита.',
     ],
     stone: [
-      'Сидела, пока не стала памятником собственному аптайму.',
-      'Окаменела в ожидании, пока ты встанешь размяться.',
+      'Сидела так долго, что её внесли в инвентарь офиса.',
+      'Окаменела, так и не дождавшись твоей разминки.',
       'Теперь она — монолит. Микросервисы не помогли.',
       'Хотела размяться после деплоя. Деплой не закончился.',
       'Застыла, как продакшн при git push --force.',
@@ -288,7 +301,7 @@
   }
 
   function renderGrave() {
-    const list = (data.graveyard || (data.state && data.state.graveyard) || []).slice()
+    const list = objs(data.graveyard || (data.state && data.state.graveyard))
       .sort((a, b) => num(b.diedAt) - num(a.diedAt) || num(b.generation) - num(a.generation));
     if (!list.length) {
       $('#pane-grave').innerHTML = `<div class="grave-empty"><div class="big">🐸</div>
@@ -300,7 +313,7 @@
     $('#pane-grave').innerHTML = `
       <div class="grave-head">
         <div class="gh-t">Здесь ${plural(list.length, 'покоится', 'покоятся', 'покоятся')} ${list.length} ${plural(list.length, 'жаба', 'жабы', 'жаб')}</div>
-        <div class="gh-s">🥵 засохло: ${dry} · 🗿 окаменело: ${stone} · Минута молчания. Потом стакан воды.</div>
+        <div class="gh-s">🥵 засохших: ${dry} · 🗿 окаменевших: ${stone} · Минута молчания. Потом стакан воды.</div>
       </div>
       <div class="graves">${list.map((g) => {
         const stoneC = g.cause !== 'dry';

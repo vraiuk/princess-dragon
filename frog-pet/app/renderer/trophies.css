@@ -2,7 +2,8 @@
 :root {
   --t-bg: var(--bg, #fffdf5);
   --t-ink: var(--ink, #1f2a22);
-  --t-sub: var(--muted, #6f7a70);
+  /* подписи: свой оттенок темнее --muted, чтобы на подложке закрытых карточек держать AA 4.5:1 */
+  --t-sub: #5c675d;
   --t-green: var(--green, #3fae5a);
   --t-blue: var(--blue, #2f8de4);
   --t-bad: var(--bad, #b5487a);
@@ -16,13 +17,19 @@
   --t-epic: #9a5ce6;
   --t-stone: #e9e7e1;
   --t-stone-ink: #4a4f4b;
+  /* цвет текста редкости/дат: темнее цвета рамки, ≥ 4.5:1 на карточке */
+  --t-blue-ink: #1f6cb8;
+  --t-epic-ink: #7a3fc4;
+  --t-gold-ink: #8a5d00;
+  --t-green-ink: #237038;
+  --t-bad-ink: #a23d6c;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --t-bg: var(--bg, #17201a);
     --t-ink: var(--ink, #e8efe6);
-    --t-sub: var(--muted, #8f9d90);
+    --t-sub: #9aa89b;
     --t-card: var(--card, #222e25);
     --t-hair: var(--sep, rgba(255, 255, 255, .08));
     --t-soft: rgba(255, 255, 255, .05);
@@ -30,6 +37,11 @@
     --t-head: rgba(22, 29, 24, .78);
     --t-stone: #3a3e3b;
     --t-stone-ink: #d9dcd8;
+    --t-blue-ink: #6db3f5;
+    --t-epic-ink: #bb93f2;
+    --t-gold-ink: #e8b443;
+    --t-green-ink: #5fd07b;
+    --t-bad-ink: #ec8db9;
   }
 }
 
@@ -201,11 +213,13 @@ button { font: inherit; color: inherit; cursor: pointer; }
   text-transform: uppercase;
   letter-spacing: .05em;
   font-size: 9.5px;
-  color: var(--rc);
+  color: var(--rt, var(--t-sub));
 }
-.ach.r-common .rar { color: var(--t-sub); }
-.when { color: var(--t-green); font-weight: 650; white-space: nowrap; }
-.ach.k-bad .when { color: var(--t-bad); }
+.ach.r-rare { --rt: var(--t-blue-ink); }
+.ach.r-epic { --rt: var(--t-epic-ink); }
+.ach.r-legendary { --rt: var(--t-gold-ink); }
+.when { color: var(--t-green-ink); font-weight: 650; white-space: nowrap; }
+.ach.k-bad .when { color: var(--t-bad-ink); }
 .bar { height: 5px; border-radius: 3px; background: var(--t-soft); margin-top: 8px; overflow: hidden; box-shadow: inset 0 0 0 .5px var(--t-hair); }
 .bar i { display: block; height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--t-green), #6fd17f); }
 .ach.k-bad .bar i { background: linear-gradient(90deg, var(--t-bad), #de6fa3); }
@@ -214,7 +228,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .ach.locked { box-shadow: none; background: var(--t-soft); border-style: dashed; }
 .ach.locked .ach-icon { filter: grayscale(1); opacity: .45; }
 .ach.locked .ach-title { color: var(--t-sub); }
-.ach.locked .ach-desc { opacity: .8; }
 .ach.locked.r-legendary { border-color: rgba(227, 169, 43, .55); }
 .ach.mystery .ach-icon { filter: none; opacity: .7; font-size: 22px; }
 .ach.mystery .ach-title { letter-spacing: .2em; }
@@ -251,7 +264,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .chart text { font-family: inherit; fill: var(--t-sub); font-variant-numeric: tabular-nums; }
 .chart .val { font-size: 11px; font-weight: 650; }
 .chart .day { font-size: 11px; font-weight: 600; }
-.chart .wd { font-size: 9.5px; opacity: .75; }
+.chart .wd { font-size: 9.5px; }
 .chart .today text { fill: var(--t-ink); font-weight: 800; }
 
 .sec { font-size: 14px; font-weight: 800; margin: 20px 2px 10px; letter-spacing: -.01em; }
@@ -302,7 +315,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 @media (prefers-color-scheme: dark) {
   .grave.g-dry .stone { background: radial-gradient(circle at 25% 30%, rgba(255, 255, 255, .06), transparent 40%), linear-gradient(#45403a, #3a3530); }
 }
-.rip { font-family: Georgia, "Times New Roman", serif; font-weight: 700; letter-spacing: .25em; font-size: 12px; opacity: .55; }
+.rip { font-family: Georgia, "Times New Roman", serif; font-weight: 700; letter-spacing: .25em; font-size: 12px; opacity: .9; }
 .g-name { font-family: Georgia, "Times New Roman", serif; font-size: 19px; font-weight: 700; margin-top: 4px; }
 .g-cause {
   margin-top: 6px;
@@ -314,7 +327,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .g-dry .g-cause { background: rgba(240, 147, 43, .2); }
 .g-stone .g-cause { background: rgba(110, 120, 115, .2); }
-.g-dates { font-size: 11px; opacity: .7; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.g-dates { font-size: 11px; margin-top: 8px; font-variant-numeric: tabular-nums; }
 .g-age { font-size: 12px; font-weight: 650; margin-top: 2px; }
 .g-epi {
   margin-top: 10px;
@@ -322,7 +335,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
   font-style: italic;
   font-size: 12px;
   line-height: 1.35;
-  opacity: .85;
   border-top: 1px solid rgba(0, 0, 0, .1);
   padding-top: 9px;
 }

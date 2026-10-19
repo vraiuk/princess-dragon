@@ -1,0 +1,106 @@
+[
+ {
+  "finding": "r1-08-03",
+  "verdict": "confirmed",
+  "why": "Вычислено в Playwright до фикса: светлая — «Редкая» 3.47, «✓ дата» 2.83, день недели в графике 2.85, R.I.P. 2.47, даты на плите 3.34, эпитафия 4.22; тёмная — «Эпическая» 3.40, описание закрытой 3.82, дни недели 3.47, R.I.P. 3.45. Скриншоты /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/f7/before/",
+  "fix": "trophies.css: отдельные текстовые цвета редкости и дат (--t-blue-ink/--t-epic-ink/--t-gold-ink/--t-green-ink/--t-bad-ink) для обеих тем, рамки прежние; убраны opacity у закрытого описания, .wd, .g-dates, .g-epi; .rip .9. Все тексты трёх вкладок и шапки ≥4.5:1 в обеих темах. После: /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/f7/after/",
+  "test": "qa/findings/r2-F7.check.js"
+ },
+ {
+  "finding": "r1-08-04",
+  "verdict": "confirmed",
+  "why": "В трофеях --muted давал 4.39–4.47 (sum-sub, чипы, описания, подписи графиков).",
+  "fix": "В trophies.css --t-sub больше не берёт --muted: свой #5c675d (светлая) и #9aa89b (тёмная), все тексты окна ≥4.5. Остальное — ui.css, зона F8.",
+  "handoff": "app/renderer/ui.css: затемнить --muted в светлой теме до ≥4.5:1 на --bg/--card (например, #5f6a60)",
+  "test": "qa/findings/r2-F7.check.js"
+ },
+ {
+  "finding": "r1-08-06",
+  "verdict": "confirmed",
+  "why": "После Enter на чипе activeElement = BODY, aria-pressed нет.",
+  "fix": "Чипы получают aria-pressed; renderAch возвращает фокус на тот же чип после innerHTML (и при обновлении данных через onUpdate).",
+  "test": "qa/findings/r2-F7.check.js"
+ },
+ {
+  "finding": "r1-08-07",
+  "verdict": "confirmed",
+  "why": "aria-controls=null, ArrowRight не работал, у svg.chart нет имени.",
+  "fix": "id/aria-controls у вкладок, aria-labelledby у панелей, aria-label у tablist, roving tabindex, ArrowLeft/Right/Home/End; у графиков aria-label «<название> по дням за 14 дней: сегодня…, в среднем…, всего…».",
+  "test": "qa/findings/r2-F7.check.js"
+ },
+ {
+  "finding": "r1-08-12",
+  "verdict": "confirmed",
+  "why": "achievements:[null,…] и graveyard:[null,…] → TypeError, вкладка пустая.",
+  "fix": "Хелпер objs(): в списках ачивок и кладбища пропускаются не-объекты, остальное рисуется.",
+  "handoff": "app/core.js: фильтровать не-объекты в graveyard при загрузке frog.json (F1)",
+  "test": "qa/findings/r2-F7.check.js"
+ },
+ {
+  "finding": "r1-05-02",
+  "verdict": "confirmed",
+  "why": "«1 разминок и перерывов» воспроизведено для 1, 2, 21, 22.",
+  "fix": "plural(n,'перерыв','перерыва','перерывов') + ' (вместе с разминками)'.",
+  "test": "qa/findings/r2-F7.check.js"
+ },
+ {
+  "finding": "r1-05-05",
+  "verdict": "confirmed",
+  "why": "В трофеях fmtDur уже даёт «2 дня 1 ч» (2950 мин), «прожила 2 дня 1 ч» на кладбище проверено. «Прожила 2950 мин», «Пауза на 240 мин», «2 дн» — в core.js/main.js/death.js/demo.js, не моя зона.",
+  "fix": "В трофеях все возраст/рекорды идут через один fmtDur; fmtHours оставлен только для суммы часов кодинга (74 ч понятнее, чем «3 дня 2 ч» за компом).",
+  "handoff": "app/core.js: экспортировать fmtDur (как в trophies.js) и подставлять в фразы; main.js, death.js, demo.js — использовать его (F1/F3/F5/F6)",
+  "test": "qa/findings/r2-F7.check.js"
+ },
+ {
+  "finding": "r1-05-10",
+  "verdict": "confirmed",
+  "why": "Эпитафии повторяли реплики облачка (legacy-код, 418, waterLevel, «памятник»).",
+  "fix": "4 эпитафии трофеев заменены на предложенные; индексы выбора не изменились.",
+  "handoff": "app/main.js:316 — эпитафия «404: water not found» (F3)",
+  "test": null
+ },
+ {
+  "finding": "r1-05-11",
+  "verdict": "confirmed",
+  "why": "Корявые строки в трофеях.",
+  "fix": "«У неё на машине всё работало.», «Окаменела, так и не дождавшись твоей разминки.», «Высохла быстрее, чем твой npm install.»; остальное — core/showcase.",
+  "test": null
+ },
+ {
+  "finding": "r1-05-13",
+  "verdict": "confirmed",
+  "why": "Мок показывал «Кит-девелопер», «Agile» и др., которых нет в DEFS.",
+  "fix": "trophies.html подключает ../achievements.js; мок строит список из FrogAchievements.DEFS в форме list() (секретные замаскированы HIDDEN, прогресс по max). 40 карточек = 40 DEFS.",
+  "test": "qa/findings/r2-F7.check.js"
+ },
+ {
+  "finding": "r1-05-14",
+  "verdict": "confirmed",
+  "why": "Подсказка секретной ачивки в трофеях была своей строкой.",
+  "fix": "По handoff от F2: для скрытых берётся a.desc из list(), запасной вариант — FrogAchievements.HIDDEN.desc. Названия редкости в трофеях уже полные.",
+  "handoff": "app/renderer/toast.js:10: «эпическая»/«легендарная» (F5)",
+  "test": null
+ },
+ {
+  "finding": "r1-05-15",
+  "verdict": "confirmed",
+  "why": "«засохло: N · окаменело: N».",
+  "fix": "«🥵 засохших: N · 🗿 окаменевших: N».",
+  "test": "qa/findings/r2-F7.check.js"
+ },
+ {
+  "finding": "r1-05-16",
+  "verdict": "confirmed",
+  "why": "Подпись графика «1,5ч» без пробела (trophies.js).",
+  "fix": "«1,5 ч». Остальные места — core/showcase/achievements.",
+  "test": "qa/findings/r2-F7.check.js"
+ },
+ {
+  "finding": "r1-10-06",
+  "verdict": "confirmed",
+  "why": "CSP trophies.html: только default-src 'self'.",
+  "fix": "trophies.html: default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'. qa:ui без ошибок консоли.",
+  "handoff": "index.html, settings.html, welcome.html — то же (F4/F8)",
+  "test": null
+ }
+]
