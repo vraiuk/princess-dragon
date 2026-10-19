@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+<title>Добро пожаловать — Жабка</title>
+<link rel="stylesheet" href="ui.css">
+<style>
+  .titlebar { position: absolute; top: 0; left: 0; right: 0; }
+  .stage { flex: 1; position: relative; overflow: hidden; }
+  .track { display: flex; height: 100%; transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
+  .slide {
+    flex: 0 0 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 26px 40px 0;
+  }
+  .scene { position: relative; width: 320px; height: 222px; flex: none; margin-top: 2px; }
+  .scene::before {
+    content: "";
+    position: absolute;
+    left: 50%; top: 52%;
+    width: 230px; height: 170px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(63, 174, 90, 0.18), rgba(63, 174, 90, 0));
+  }
+  .scene canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .pill {
+    position: absolute;
+    left: 50%; bottom: 0;
+    transform: translateX(-50%);
+    padding: 3px 10px;
+    border-radius: 99px;
+    font-size: 11.5px;
+    font-weight: 600;
+    background: var(--card);
+    border: 1px solid var(--sep);
+    box-shadow: var(--shadow);
+    white-space: nowrap;
+    transition: opacity 0.25s;
+  }
+  .slide h2 { margin: 12px 0 6px; font-size: 22px; font-weight: 700; letter-spacing: -0.015em; }
+  .slide p { margin: 0; max-width: 430px; color: var(--ink2); font-size: 13.5px; line-height: 1.5; }
+  .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 14px; }
+  .chip {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 99px;
+    background: var(--bg2);
+    border: 1px solid var(--sep);
+    color: var(--ink2);
+    font-variant-numeric: tabular-nums;
+  }
+  .chip b { color: var(--ink); }
+  .chip.bad { background: rgba(181, 72, 122, 0.1); border-color: rgba(181, 72, 122, 0.25); }
+
+  /* выбор режима */
+  .scene.small { height: 92px; width: 200px; }
+  .scene.small::before { width: 150px; height: 110px; }
+  .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; max-width: 470px; margin-top: 14px; }
+  .mode {
+    appearance: none;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    background: var(--card);
+    border: 2px solid var(--sep);
+    border-radius: 14px;
+    padding: 12px 14px 13px;
+    cursor: default;
+    box-shadow: var(--shadow);
+    transition: border-color 0.2s, transform 0.15s, background 0.2s;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+  }
+  .mode:hover { transform: translateY(-1px); }
+  .mode:focus-visible { outline: none; box-shadow: var(--focus); }
+  .mode .em { font-size: 26px; line-height: 1; }
+  .mode .t { font-weight: 700; font-size: 14px; margin: 7px 0 3px; }
+  .mode .d { font-size: 11.5px; color: var(--muted); line-height: 1.4; }
+  .mode .check {
+    position: absolute; top: 10px; right: 10px;
+    width: 20px; height: 20px; border-radius: 50%;
+    border: 2px solid var(--sep);
+    display: grid; place-items: center;
+    font-size: 11px; color: #fff;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  .mode[aria-checked="true"].hard { border-color: var(--bad); background: rgba(181, 72, 122, 0.06); }
+  .mode[aria-checked="true"].soft { border-color: var(--green); background: rgba(63, 174, 90, 0.07); }
+  .mode[aria-checked="true"].hard .check { background: var(--bad); border-color: var(--bad); }
+  .mode[aria-checked="true"].soft .check { background: var(--green); border-color: var(--green); }
+  .mode[aria-checked="true"] .check::after { content: "✓"; font-weight: 800; }
+  .login {
+    display: flex; align-items: center; gap: 12px;
+    width: 100%; max-width: 470px;
+    margin-top: 12px;
+    padding: 9px 14px;
+    text-align: left;
+  }
+  .login .row-text { flex: 1; }
+
+  .footer { justify-content: space-between; border-top: 0; padding: 10px 20px 18px; }
+  .footer .side { width: 140px; display: flex; }
+  .footer .side.right { justify-content: flex-end; }
+  #bBack[hidden] { display: inline-flex; visibility: hidden; }
+  .titlebar .btn.ghost { font-size: 12px; }
+</style>
+</head>
+<body class="ui">
+  <header class="titlebar">
+    <span class="spacer"></span>
+    <button class="btn ghost small" id="bSkip">Пропустить</button>
+  </header>
+
+  <div class="stage">
+    <div class="track" id="track">
+      <section class="slide" aria-label="Привет">
+        <div class="scene"><canvas data-scene="hello"></canvas></div>
+        <h2>Привет, я Жабка 🐸</h2>
+        <p>Я поселюсь в углу твоего экрана, буду кодить вместе с тобой и следить, чтобы ты не превратился в сухарь и памятник.</p>
+        <div class="chips">
+          <span class="chip">⌨️ печатаешь — я стучу лапками</span>
+          <span class="chip">👀 слежу за курсором</span>
+          <span class="chip">👆 тыкни меня — ква!</span>
+        </div>
+      </section>
+
+      <section class="slide" aria-label="Вода">
+        <div class="scene"><canvas data-scene="water"></canvas><span class="pill" data-pill="water"></span></div>
+        <h2>Без воды я сохну 💧</h2>
+        <p>Стакан рядом со мной пустеет за <b data-t="water">45 мин</b>. Потом я желтею, морщусь и прошу пить. Попил — жми 💧, и я снова сочная.</p>
+        <div class="chips">
+          <span class="chip">💧 каждые <b data-t="water">45 мин</b></span>
+          <span class="chip">🔁 переспрошу через <b data-t="nag">10 мин</b></span>
+          <span class="chip bad" data-hard>🥀 засохну насмерть за <b data-t="dieWater">2 ч 15 мин</b></span>
+        </div>
+      </section>
+
+      <section class="slide" aria-label="Движение">
+        <div class="scene"><canvas data-scene="stone"></canvas><span class="pill" data-pill="stone"></span></div>
+        <h2>Без движения я каменею 🗿</h2>
+        <p>Через <b data-t="move">50 мин</b> сидения камень ползёт снизу вверх. Встань и пройдись: <b data-t="break">5 мин</b> без мыши и клавиатуры — перерыв засчитан сам, нажимать ничего не надо.</p>
+        <div class="chips">
+          <span class="chip">🤸 разминка каждые <b data-t="move">50 мин</b></span>
+          <span class="chip">🚶 <b data-t="break">5 мин</b> без мыши = перерыв</span>
+          <span class="chip bad" data-hard>🗿 окаменею насмерть за <b data-t="dieStone">2 ч</b></span>
+        </div>
+      </section>
+
+      <section class="slide" aria-label="Режим">
+        <div class="scene small"><canvas data-scene="pick"></canvas></div>
+        <h2>Насколько всё серьёзно?</h2>
+        <p>Выбери, как жить будем. Передумаешь — поменяешь в&nbsp;⚙️&nbsp;Настройках.</p>
+        <div class="modes" role="radiogroup" aria-label="Режим">
+          <button class="mode hard" id="mHard" role="radio" aria-checked="true">
+            <span class="check"></span>
+            <div class="em">💀</div>
+            <div class="t">Хардкор</div>
+            <div class="d">Жаба может засохнуть в изюм или окаменеть насмерть. Кладбище, ачивки позора, яйцо.</div>
+          </button>
+          <button class="mode soft" id="mSoft" role="radio" aria-checked="false">
+            <span class="check"></span>
+            <div class="em">🌱</div>
+            <div class="t">Добрый</div>
+            <div class="d">Без смертей. Сохнет, каменеет и ноет, но всегда тебя дождётся.</div>
+          </button>
+        </div>
+        <div class="card login">
+          <div class="row-text">
+            <div class="row-label">Запускать при входе в систему</div>
+            <div class="row-hint">Чтобы утром жаба сразу напомнила про стакан воды.</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="login" checked aria-label="Запускать при входе"><span></span></label>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <div class="side"><button class="btn" id="bBack">← Назад</button></div>
+    <div class="dots" id="dots"></div>
+    <div class="side right"><button class="btn primary" id="bNext">Дальше →</button></div>
+  </footer>
+
+<script src="welcome.js"></script>
+</body>
+</html>

@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+<title>Настройки — Жабка</title>
+<link rel="stylesheet" href="ui.css">
+<style>
+  .doom {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 2px;
+  }
+  .doom .card { padding: 12px 14px; position: relative; overflow: hidden; }
+  .doom .ico { font-size: 22px; line-height: 1; }
+  .doom .big { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; margin: 6px 0 2px; font-variant-numeric: tabular-nums; }
+  .doom .what { font-size: 11.5px; color: var(--muted); line-height: 1.35; }
+  .doom .bar { height: 4px; border-radius: 4px; background: var(--ctl); margin-top: 10px; overflow: hidden; }
+  .doom .bar i { display: block; height: 100%; border-radius: 4px; transition: width 0.35s ease; }
+  .doom .dry .bar i { background: linear-gradient(90deg, #6fc4f0, #d9a74a, #b06a3a); }
+  .doom .stone .bar i { background: linear-gradient(90deg, var(--green), #9a9b94, #5f605b); }
+  .doom.kind .big { color: var(--green); }
+  .doom.kind .bar { display: none; }
+  .mode-line { display: flex; align-items: center; gap: 8px; margin: 2px 4px 8px; font-size: 12px; color: var(--muted); }
+  .scale-wrap { width: 200px; }
+  .scale-val { width: 44px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+  details.why { margin-top: 18px; }
+  details.why summary {
+    list-style: none;
+    font-weight: 600;
+    cursor: default;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  details.why summary::-webkit-details-marker { display: none; }
+  details.why summary::before {
+    content: ""; width: 6px; height: 6px; margin: 0 4px 0 2px;
+    border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+    transform: rotate(-45deg); transition: transform 0.2s;
+  }
+  details.why[open] summary::before { transform: rotate(45deg); }
+  details.why ul { margin: 6px 0 0; padding-left: 18px; }
+  details.why li { margin: 4px 0; }
+  .ver { font-size: 11px; color: var(--muted); }
+  .titlebar .frog { font-size: 16px; }
+</style>
+</head>
+<body class="ui">
+  <header class="titlebar bordered">
+    <span class="frog">🐸</span>
+    <h1>Настройки Жабки</h1>
+    <span class="spacer"></span>
+  </header>
+
+  <main class="content" id="content">
+    <div class="group-title">Если совсем забить на жабу</div>
+    <div class="mode-line" id="modeLine"></div>
+    <div class="doom" id="doom">
+      <div class="card dry">
+        <div class="ico">🥀</div>
+        <div class="big" id="doomWater">2 ч 15 мин</div>
+        <div class="what" id="doomWaterText">без воды — и она засохнет в изюм</div>
+        <div class="bar"><i id="doomWaterBar"></i></div>
+      </div>
+      <div class="card stone">
+        <div class="ico">🗿</div>
+        <div class="big" id="doomStone">2 ч</div>
+        <div class="what" id="doomStoneText">без разминки — и она окаменеет насмерть</div>
+        <div class="bar"><i id="doomStoneBar"></i></div>
+      </div>
+    </div>
+
+    <div class="group-title">💧 Вода</div>
+    <div class="group">
+      <div class="row">
+        <div class="row-text">
+          <div class="row-label">Стакан воды каждые</div>
+          <div class="row-hint">За это время стакан рядом с жабой пустеет, и она начинает сохнуть.</div>
+        </div>
+        <div class="row-control"><div class="seg" data-key="waterEvery" data-values="30,45,60,90" data-unit="мин"></div></div>
+      </div>
+    </div>
+
+    <div class="group-title">🤸 Движение</div>
+    <div class="group">
+      <div class="row">
+        <div class="row-text">
+          <div class="row-label">Разминка после</div>
+          <div class="row-hint">Столько минут непрерывного сидения — потом жаба начинает каменеть снизу вверх.</div>
+        </div>
+        <div class="row-control"><div class="seg" data-key="moveEvery" data-values="30,45,50,60,90" data-unit="мин"></div></div>
+      </div>
+      <div class="row">
+        <div class="row-text">
+          <div class="row-label">Перерыв засчитывается сам через</div>
+          <div class="row-hint">Не трогаешь мышь и клавиатуру столько минут (или экран заблокирован) — значит, отошёл. Жаба поверит.</div>
+        </div>
+        <div class="row-control"><div class="seg" data-key="breakAfter" data-values="3,5,10" data-unit="мин"></div></div>
+      </div>
+    </div>
+
+    <div class="group-title">🔔 Напоминания</div>
+    <div class="group">
+      <div class="row">
+        <div class="row-text">
+          <div class="row-label">Повторять, если игнорируешь</div>
+          <div class="row-hint">Как часто жаба переспрашивает после «Позже» или молчания.</div>
+        </div>
+        <div class="row-control"><div class="seg" data-key="nagEvery" data-values="5,10,15,30" data-unit="мин"></div></div>
+      </div>
+      <div class="row">
+        <div class="row-text">
+          <div class="row-label">Звук «ква»</div>
+          <div class="row-hint">Тихое кваканье при напоминаниях и ачивках.</div>
+        </div>
+        <div class="row-control"><label class="switch"><input type="checkbox" data-key="sound" aria-label="Звук «ква»"><span></span></label></div>
+      </div>
+      <div class="row">
+        <div class="row-text">
+          <div class="row-label">Системные уведомления</div>
+          <div class="row-hint">Если облачко не заметил — придёт уведомление macOS.</div>
+        </div>
+        <div class="row-control"><label class="switch"><input type="checkbox" data-key="notify" aria-label="Системные уведомления"><span></span></label></div>
+      </div>
+    </div>
+
+    <div class="group-title">🐸 Жаба</div>
+    <div class="group">
+      <div class="row">
+        <div class="row-text">
+          <div class="row-label">Размер</div>
+          <div class="row-hint">Для съёмки и больших мониторов — побольше.</div>
+        </div>
+        <div class="row-control">
+          <div class="scale-wrap">
+            <input type="range" class="slider" id="scale" min="0" max="3" step="1" aria-label="Размер жабы">
+            <div class="ticks"><span>S</span><span>M</span><span>L</span><span>XL</span></div>
+          </div>
+          <span class="scale-val" id="scaleVal">100%</span>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row-text">
+          <div class="row-label">💀 Хардкор: жаба может умереть</div>
+          <div class="row-hint" id="deathHint">Засохнет или окаменеет насовсем. Будет кладбище и новая жаба из яйца.</div>
+        </div>
+        <div class="row-control"><label class="switch bad"><input type="checkbox" data-key="deathEnabled" aria-label="Хардкор: жаба может умереть"><span></span></label></div>
+      </div>
+    </div>
+
+    <div class="group-title">⚙️ Система</div>
+    <div class="group">
+      <div class="row">
+        <div class="row-text">
+          <div class="row-label">Запускать при входе в систему</div>
+          <div class="row-hint">Жаба встретит тебя утром и сразу попросит стакан воды.</div>
+        </div>
+        <div class="row-control"><label class="switch"><input type="checkbox" data-key="launchAtLogin" aria-label="Запускать при входе"><span></span></label></div>
+      </div>
+    </div>
+
+    <details class="why" id="why">
+      <summary>Почему такие тайминги?</summary>
+      <div class="hint-box">
+        <ul>
+          <li><b>Вода — 45 минут.</b> Около 6 стаканов за 8-часовой день плюс утренний. Жажда приходит позже, чем нужна вода.</li>
+          <li><b>Разминка — 50 минут.</b> Классика «50/10»: долгое непрерывное сидение вредно, а короткие перерывы каждый час его компенсируют.</li>
+          <li><b>Перерыв — 5 минут без мыши.</b> Отошёл на кухню — засчитано. Читать код и думать 3 минуты — ещё не перерыв.</li>
+          <li><b>Повтор — 10 минут.</b> Достаточно, чтобы закончить мысль, и мало, чтобы забыть.</li>
+        </ul>
+      </div>
+    </details>
+  </main>
+
+  <footer class="footer">
+    <button class="btn" id="bWelcome">👋 Показать приветствие</button>
+    <button class="btn" id="bTrophies">🏆 Трофеи</button>
+    <span class="spacer"></span>
+    <span class="ver" id="ver"></span>
+  </footer>
+
+<script src="settings.js"></script>
+</body>
+</html>
