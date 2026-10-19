@@ -9,7 +9,7 @@ contextBridge.exposeInMainWorld('frog', {
   onEvent: on('event'),
   onCursor: on('cursor'),
   onSettings: on('settings'),
-  action: (type, opts) => ipcRenderer.send('action', Object.assign({ type }, opts || {})),
+  action: (type, opts) => ipcRenderer.send('action', Object.assign({}, opts || {}, { type })),
   setIgnore: (v) => ipcRenderer.send('ignore', v),
   dragStart: () => ipcRenderer.send('drag-start'),
   dragEnd: () => ipcRenderer.send('drag-end'),

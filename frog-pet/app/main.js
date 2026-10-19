@@ -1,6 +1,6 @@
 'use strict';
 const {
-  app, BrowserWindow, Tray, Menu, ipcMain, powerMonitor, screen, Notification, nativeImage,
+  app, BrowserWindow, Tray, Menu, ipcMain, powerMonitor, screen, Notification, nativeImage, dialog,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -28,14 +28,15 @@ let hidden = false, onboarded = false;
 let locked = false, lockedAt = 0;
 let drag = null;
 let menuStamp = '';
+let quitting = false;
 let film = null;              // режим съёмки: { pet, A, now, director, name }
 const appWins = {};           // окна приложения: trophies / settings / welcome
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
-if (!app.requestSingleInstanceLock()) {
-  app.quit();
-}
+// Второй экземпляр только будит первый и выходит, ничего не трогая (ни окон, ни frog.json)
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) app.quit();
 
 // FROG_DEBUG=1 — ошибки и предупреждения из всех окон (рендер) в stderr main-процесса
 if (process.env.FROG_DEBUG) {
@@ -55,8 +56,51 @@ if (process.env.FROG_DEBUG) {
 // ---------- хранилище ----------
 const storePath = () => path.join(app.getPath('userData'), 'frog.json');
 
+const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+
 function load() {
-  try { return JSON.parse(fs.readFileSync(storePath(), 'utf8')); } catch { return {}; }
+  let data = null;
+  try { data = JSON.parse(fs.readFileSync(storePath(), 'utf8')); } catch (e) {
+    // битый файл не затираем молча: оставляем копию рядом
+    if (e && e.code !== 'ENOENT') {
+      console.error('frog.json не читается, начинаем заново', e.message);
+      try { fs.copyFileSync(storePath(), storePath() + '.broken'); } catch { /* нечего копировать */ }
+    }
+  }
+  if (!isObj(data)) return {};
+  if (!isObj(data.settings)) delete data.settings;
+  if (!isObj(data.pet)) delete data.pet;
+  return data;
+}
+
+// Только допустимые значения настроек; мусор из файла — к значениям по умолчанию
+function cleanSettings(s) {
+  const out = Object.assign({}, DEFAULTS);
+  if (!isObj(s)) return out;
+  SETTING_KEYS.forEach((k) => {
+    if (!(k in s)) return;
+    if (NUM_KEYS.includes(k)) {
+      const n = Number(s[k]);
+      if (Number.isFinite(n) && n > 0) out[k] = k === 'scale' ? Math.min(3, Math.max(0.5, n)) : n;
+    } else if (typeof s[k] === 'boolean') out[k] = s[k];
+  });
+  return out;
+}
+
+// Сохранение v1 (без life): в v1 смерти не было, и запущенная жаба умерла бы
+// в первую же секунду после обновления — даём ей фору ниже зоны «при смерти»
+function migratePet(saved, s) {
+  if (!isObj(saved)) return null;
+  const p = Object.assign({}, saved);
+  // числа из файла: мусор (строка, null) превратился бы в NaN и сломал таймеры навсегда
+  ['waterMs', 'sitMs', 'pausedUntil', 'lastTick', 'awayStart', 'idleSec', 'diedAt'].forEach((k) => {
+    if (k in p && !Number.isFinite(p[k])) p[k] = 0;
+  });
+  if ('life' in saved) return p;
+  const cap = (ms, every) => Math.min(Number(ms) || 0, every * 60 * 1000 * 1.2);
+  p.waterMs = cap(p.waterMs, s.waterEvery);
+  p.sitMs = cap(p.sitMs, s.moveEvery);
+  return p;
 }
 
 function save() {
@@ -68,6 +112,7 @@ function save() {
     onboarded,
     pos: win && !win.isDestroyed() ? win.getPosition() : store.pos,
     hidden,
+    moveDeclined: !!store.moveDeclined,
   };
   try {
     fs.mkdirSync(path.dirname(storePath()), { recursive: true });
@@ -130,7 +175,8 @@ function createWindow() {
     },
   });
   win.setAlwaysOnTop(true, 'floating');
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // skipTransformProcessType: без него на macOS окна и Dock моргают при смене типа процесса
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
   win.setIgnoreMouseEvents(true, { forward: true });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.webContents.on('did-finish-load', () => {
@@ -139,6 +185,8 @@ function createWindow() {
     send('view', curPet().view(curNow()));
   });
   win.once('ready-to-show', () => { if (!hidden) win.showInactive(); });
+  // Cmd+W (меню «Окно») не должен уничтожать жабу — только прятать; закрывается она при выходе
+  win.on('close', (e) => { if (!quitting) { e.preventDefault(); setHidden(true); } });
   win.on('closed', () => { win = null; });
 }
 
@@ -283,12 +331,21 @@ function checkAchievements(events) {
     fresh = A.check({ now, events: events || [], view: p.view(now), state: p.serialize(), settings: curSettings() }) || [];
   } catch (e) { console.error('achievements.check', e); return []; }
   const script = film && Showcase && Showcase.SCRIPTS ? Showcase.SCRIPTS[film.name] : null;
+  const loud = [];
   fresh.forEach((a) => {
     if (script && Showcase.showAchievement && !Showcase.showAchievement(script, a)) return;
     send('event', Object.assign({ type: 'achievement' }, a));
-    if (a.kind === 'bad') notify(`🤡 Позорная ачивка: ${a.title}`, `${a.icon || ''} ${a.desc || ''}`.trim());
-    else if (a.rarity && a.rarity !== 'common') notify(`🏆 ${a.title}`, `${a.icon || ''} ${a.desc || ''}`.trim());
+    if (a.kind === 'bad' || (a.rarity && a.rarity !== 'common')) loud.push(a);
   });
+  // Системные уведомления: при смерти хватит уведомления о смерти (ачивки видны тостами),
+  // несколько ачивок разом — одним уведомлением, а не пачкой
+  const died = (events || []).some((e) => e && e.type === 'death');
+  if (!died && loud.length === 1) {
+    const a = loud[0];
+    notify(a.kind === 'bad' ? `🤡 Позорная ачивка: ${a.title}` : `🏆 ${a.title}`, `${a.icon || ''} ${a.desc || ''}`.trim());
+  } else if (!died && loud.length > 1) {
+    notify(`🏆 Новые ачивки: ${loud.length}`, loud.map((a) => `${a.icon || ''} ${a.title}`.trim()).join('\n'));
+  }
   if (fresh.length) { if (!film) save(); pushApp(); }
   return fresh;
 }
@@ -473,6 +530,7 @@ function setSetting(key, val) {
   if (NUM_KEYS.includes(key)) {
     val = Number(val);
     if (!Number.isFinite(val) || val <= 0) return;
+    if (key === 'scale') val = Math.min(3, Math.max(0.5, val));
   } else val = !!val;
   settings[key] = val;
   pet.setSettings(settings);
@@ -486,9 +544,50 @@ function setSetting(key, val) {
   pushApp();
 }
 
+const inApplications = () => {
+  if (process.platform !== 'darwin') return true;
+  try { return app.isInApplicationsFolder(); } catch { return true; }
+};
+
 function applyLogin() {
   if (!app.isPackaged) return;
+  // из dmg / «Загрузок» путь транслоцирован — такой login item сломается после перезапуска
+  if (!inApplications()) return;
   try { app.setLoginItemSettings({ openAtLogin: !!settings.launchAtLogin }); } catch (e) { console.error(e); }
+}
+
+// Упакованное приложение не в /Applications: один раз предлагаем переместить (отказ помним)
+async function offerMoveToApplications() {
+  if (!app.isPackaged || process.platform !== 'darwin' || inApplications() || store.moveDeclined) return;
+  try {
+    focusApp();
+    const { response } = await dialog.showMessageBox({
+      type: 'question',
+      message: 'Переместить Жабку в «Программы»?',
+      detail: 'Так автозапуск при входе будет работать, а macOS не будет запускать жабу из временной папки.',
+      buttons: ['Переместить в Программы', 'Не сейчас'],
+      defaultId: 0, cancelId: 1,
+    });
+    if (response === 0) {
+      save();
+      app.moveToApplicationsFolder(); // при успехе перезапускает приложение
+    } else {
+      store.moveDeclined = true;
+      save();
+    }
+  } catch (e) { console.error('moveToApplicationsFolder', e); }
+}
+
+// Меню приложения: правка (копипаст в полях) и окно, без «Выйти» —
+// Cmd+Q в окне настроек не должен закрывать жабу, выход только через меню-бар
+function setAppMenu() {
+  const template = [];
+  if (process.platform === 'darwin') {
+    template.push({ label: app.name, submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }] });
+  }
+  template.push({ role: 'editMenu' });
+  template.push({ label: 'Окно', submenu: [{ role: 'minimize' }, { role: 'close' }] });
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 function filmMenu() {
@@ -590,16 +689,18 @@ ipcMain.on('app:close', (e) => {
 app.on('second-instance', () => setHidden(false));
 
 app.whenReady().then(() => {
+  if (!gotLock) return;
   if (process.platform === 'darwin' && app.dock) app.dock.hide();
 
   store = load();
   const firstRun = !store.settings;
   onboarded = !!store.onboarded;
-  settings = Object.assign({}, DEFAULTS, store.settings || {});
+  settings = cleanSettings(store.settings);
   hidden = !!store.hidden;
-  pet = Core.createPet(store.pet, settings, Date.now());
+  pet = Core.createPet(migratePet(store.pet, settings), settings, Date.now());
   achievements = makeAchievements(store.achievements);
   if (firstRun) applyLogin();
+  setAppMenu();
 
   createWindow();
 
@@ -620,6 +721,9 @@ app.whenReady().then(() => {
   // Онбординг при первом запуске
   if ((firstRun || !onboarded) && !process.env.FROG_SNAPSHOT && !process.env.FROG_SHOWCASE) {
     setTimeout(() => openWindow('welcome'), 600);
+  }
+  if (!process.env.FROG_SNAPSHOT && !process.env.FROG_SHOWCASE && !process.env.FROG_TEST_SCRIPT) {
+    setTimeout(offerMoveToApplications, 1500);
   }
 
   // FROG_SHOWCASE=short — сразу запустить сценарий (для записи экрана)
@@ -663,6 +767,21 @@ app.whenReady().then(() => {
     }, 2500);
   }
 
+  // FROG_TEST_SCRIPT=/path.js — автотест: module.exports = (api) => {...}, выполняется в main после загрузки окна жабы
+  if (process.env.FROG_TEST_SCRIPT) {
+    win.webContents.once('did-finish-load', () => {
+      const api = {
+        act, setSetting, openWindow, startFilm, stopFilm, save, load, storePath, appData, updateTray, rebuildMenu,
+        appWins, APP_WINDOWS,
+        get win() { return win; }, get tray() { return tray; }, get pet() { return pet; },
+        get achievements() { return achievements; }, get film() { return film; }, get settings() { return settings; },
+        get hidden() { return hidden; }, get onboarded() { return onboarded; }, ipcMain,
+      };
+      Promise.resolve().then(() => require(path.resolve(process.env.FROG_TEST_SCRIPT))(api))
+        .catch((e) => { console.error('[test] FAIL', e); app.exit(1); });
+    });
+  }
+
   tick();
   setInterval(tick, 1000);
   setInterval(sendCursor, 50);
@@ -671,4 +790,4 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => { /* живём в меню-баре */ });
-app.on('before-quit', () => { stopFilm(true); save(); });
+app.on('before-quit', () => { quitting = true; stopFilm(true); save(); });
