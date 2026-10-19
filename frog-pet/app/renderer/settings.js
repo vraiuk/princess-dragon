@@ -4,6 +4,7 @@
 
   const DEFAULTS = { waterEvery: 45, moveEvery: 50, breakAfter: 5, nagEvery: 10, sound: true, notify: true, scale: 1, launchAtLogin: true, deathEnabled: true };
   const SCALES = [0.75, 1, 1.25, 1.5];
+  const SIZES = ['S', 'M', 'L', 'XL'];
 
   // мок для браузера: страница открывается и без Electron
   function mockApp() {
@@ -48,11 +49,15 @@
     const key = seg.dataset.key;
     const unit = seg.dataset.unit || '';
     seg.setAttribute('role', 'group');
+    // подпись группы — текст строки слева («Стакан воды каждые»), у кнопок — значение с единицей
+    const label = seg.closest('.row') && seg.closest('.row').querySelector('.row-label');
+    if (label) { label.id = label.id || 'lbl-' + key; seg.setAttribute('aria-labelledby', label.id); }
     seg.dataset.values.split(',').map(Number).forEach((v) => {
       const b = document.createElement('button');
       b.type = 'button';
       b.textContent = String(v);
       b.title = `${v} ${unit}`;
+      if (unit) b.setAttribute('aria-label', `${v} ${unit}`);
       b.dataset.val = v;
       b.addEventListener('click', () => set(key, v));
       seg.appendChild(b);
@@ -72,7 +77,9 @@
   const $scale = $('scale');
   function paintSlider() {
     $scale.style.setProperty('--p', ($scale.value / $scale.max) * 100 + '%');
-    $('scaleVal').textContent = Math.round(SCALES[$scale.value] * 100) + '%';
+    const pct = Math.round(SCALES[$scale.value] * 100) + '%';
+    $('scaleVal').textContent = pct;
+    $scale.setAttribute('aria-valuetext', `${SIZES[$scale.value]}, ${pct}`);
   }
   $scale.addEventListener('input', paintSlider);
   $scale.addEventListener('change', () => set('scale', SCALES[$scale.value]));
@@ -119,7 +126,9 @@
 
   function apply(d) {
     if (!d || !d.settings) return;
-    S = Object.assign({}, DEFAULTS, d.settings);
+    // null/мусор из frog.json не должен затирать умолчания («0 мин» и ни одного выбранного сегмента)
+    S = Object.assign({}, DEFAULTS);
+    for (const [k, v] of Object.entries(d.settings)) if (v != null && typeof v === typeof DEFAULTS[k] && (typeof v !== 'number' || v > 0)) S[k] = v;
     if (d.version) $('ver').textContent = 'Жабка ' + d.version;
     render();
   }

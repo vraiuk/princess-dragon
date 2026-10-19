@@ -398,7 +398,7 @@
         f.mouth = 'happy'; f.typing = false;
         jumpAt(fill + 0.2);
         if (!sc.jumped && p > fill + 0.2) { sc.jumped = true; for (let i = 0; i < 6; i++) sc.parts.push({ kind: 'heart', text: '💧', x: rnd(90, 200), y: rnd(150, 210), life: 0, max: rnd(1, 1.6), shade: Math.random() }); }
-        setPill(sc, '💧 Попил — снова сочная!');
+        setPill(sc, '💧 Стакан выпит — снова сочная!');
       }
     } else if (sc.kind === 'stone') {
       const L = 10.5;
@@ -420,7 +420,7 @@
         if (!sc.jumped) { sc.jumped = true; burst(sc, 34, 'chunk'); }
         f.stone = lerp(0.92, 0, clamp((p - away) / 0.35, 0, 1));
         jumpAt(away);
-        setPill(sc, '🤸 Вернулся — камень долой!');
+        setPill(sc, '🤸 С возвращением — камень долой!');
       }
     } else if (sc.kind === 'pick') {
       f.typing = false;
@@ -463,6 +463,7 @@
     const lt = now - sc.t0;
     updateEyes(sc, now);
     const f = sceneState(sc, now, lt);
+    if (RM.matches) { f.dy = 0; f.rot = 0; f.sx = 1; f.sy = 1; f.sweat = false; sc.parts = []; }
     const C = colors(f.dry);
     const { g, og, dpr, k } = sc;
     const base = () => [dpr * k, 0, 0, dpr * k, dpr * sc.ox, dpr * sc.oy];
@@ -499,6 +500,8 @@
     tickParts(sc, g, dt);
     if (f.bubble) bubble(g, f.bubble);
   }
+  // prefers-reduced-motion: сцены объясняют смену состояния, её оставляем, а прыжки, тряску и частицы убираем
+  const RM = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
 
   // ================= слайды =================
   const N = 4;
@@ -514,10 +517,11 @@
   }
   document.querySelectorAll('canvas[data-scene]').forEach((cv) => scenes.push(makeScene(cv)));
 
-  function go(i) {
+  // focusTo: куда поставить фокус, если нажатая кнопка спряталась (иначе он падает на body)
+  function go(i, focusTo) {
     cur = clamp(i, 0, N - 1);
     $track.style.transform = `translateX(${-cur * 100}%)`;
-    [...$dots.children].forEach((d, j) => d.classList.toggle('on', j === cur));
+    [...$dots.children].forEach((d, j) => { d.classList.toggle('on', j === cur); if (j === cur) d.setAttribute('aria-current', 'step'); else d.removeAttribute('aria-current'); });
     $('bBack').hidden = cur === 0;
     $('bSkip').style.visibility = cur === N - 1 ? 'hidden' : 'visible';
     const last = cur === N - 1;
@@ -528,14 +532,23 @@
     // невидимые экраны выключены из Tab: иначе фокус уезжает на последний слайд и сцена сдвигается
     document.querySelectorAll('.slide').forEach((s, j) => { s.setAttribute('aria-hidden', String(j !== cur)); s.inert = j !== cur; });
     $track.parentElement.scrollLeft = 0;
+    const a = document.activeElement;
+    if (focusTo || (a && a !== document.body && (getComputedStyle(a).visibility === 'hidden' || a.closest('[inert]')))) (focusTo || $('bNext')).focus();
   }
   // браузер сам прокручивает .stage к сфокусированному элементу — возвращаем на место
   $track.parentElement.addEventListener('scroll', (e) => { e.currentTarget.scrollLeft = 0; });
 
-  $('bBack').addEventListener('click', () => go(cur - 1));
+  $('bBack').addEventListener('click', () => go(cur - 1, cur === 1 ? $('bNext') : null));
   $('bNext').addEventListener('click', () => (cur === N - 1 ? finish() : go(cur + 1)));
-  $('bSkip').addEventListener('click', () => go(N - 1));
+  $('bSkip').addEventListener('click', () => go(N - 1, document.querySelector('.mode[aria-checked="true"]')));
   document.addEventListener('keydown', (e) => {
+    // внутри radiogroup стрелки выбирают режим (паттерн ARIA radio), а не листают слайды
+    if (e.target.closest && e.target.closest('[role=radiogroup]') && /^Arrow/.test(e.key)) {
+      e.preventDefault();
+      const to = e.target.id === 'mHard' ? $('mSoft') : $('mHard');
+      to.click(); to.focus();
+      return;
+    }
     if (e.key === 'ArrowRight') go(cur + 1);
     else if (e.key === 'ArrowLeft') go(cur - 1);
     else if (e.key === 'Enter' && cur === N - 1 && !(e.target instanceof HTMLButtonElement)) finish();
@@ -546,6 +559,8 @@
     S.deathEnabled = hard;
     $('mHard').setAttribute('aria-checked', String(hard));
     $('mSoft').setAttribute('aria-checked', String(!hard));
+    $('mHard').tabIndex = hard ? 0 : -1;
+    $('mSoft').tabIndex = hard ? -1 : 0;
     document.querySelectorAll('[data-hard]').forEach((el) => { el.style.display = hard ? '' : 'none'; });
     const pick = scenes.find((s) => s.kind === 'pick');
     if (pick) pick.parts = [];
@@ -577,7 +592,9 @@
 
   function apply(d) {
     if (!d || !d.settings) return;
-    S = Object.assign({}, DEFAULTS, d.settings);
+    // null/мусор из frog.json не должен затирать умолчания («0 мин»)
+    S = Object.assign({}, DEFAULTS);
+    for (const [k, v] of Object.entries(d.settings)) if (v != null && typeof v === typeof DEFAULTS[k] && (typeof v !== 'number' || v > 0)) S[k] = v;
     applyTexts();
   }
 

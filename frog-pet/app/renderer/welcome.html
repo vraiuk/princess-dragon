@@ -17,8 +17,13 @@
     flex-direction: column;
     align-items: center;
     text-align: center;
-    padding: 26px 40px 0;
+    padding: 26px 40px 8px;
+    /* при масштабе 125% и крупном шрифте слайд не влезает — пусть прокручивается, а не обрезается (r1-08-01) */
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-width: thin;
   }
+  .slide > * { flex: none; }
   .scene { position: relative; width: 320px; height: 222px; flex: none; margin-top: 2px; }
   .scene::before {
     content: "";
@@ -57,6 +62,7 @@
     font-variant-numeric: tabular-nums;
   }
   .chip b { color: var(--ink); }
+  .nw { white-space: nowrap; }
   .chip.bad { background: rgba(181, 72, 122, 0.1); border-color: rgba(181, 72, 122, 0.25); }
 
   /* выбор режима */
@@ -110,6 +116,25 @@
   .footer { justify-content: space-between; border-top: 0; padding: 10px 20px 18px; }
   .footer .side { width: 140px; display: flex; }
   .footer .side.right { justify-content: flex-end; }
+  /* окно 560×520 при zoom 125% — это 448×416 CSS-пикселей: ужимаем сцену, чтобы обошлось без прокрутки */
+  @media (max-height: 470px) {
+    .slide { padding-top: 6px; padding-bottom: 4px; }
+    .scene { width: 240px; height: 150px; }
+    .scene::before { width: 170px; height: 120px; }
+    .scene.small { width: 150px; height: 56px; }
+    .scene.small::before { width: 110px; height: 70px; }
+    .slide h2 { margin-top: 8px; font-size: 20px; }
+    .slide p { font-size: 13px; line-height: 1.45; }
+    .chips { margin-top: 10px; }
+    .modes { margin-top: 10px; gap: 10px; }
+    .mode { padding: 10px 12px 11px; }
+    .mode .em { font-size: 22px; }
+    .mode .t { margin: 5px 0 2px; }
+    .login { margin-top: 10px; padding: 7px 12px; }
+    .login .row-hint { display: none; }
+    .mode .d { font-size: 11px; }
+    .footer { padding: 8px 16px 12px; }
+  }
   #bBack[hidden] { display: inline-flex; visibility: hidden; }
   .titlebar .btn.ghost { font-size: 12px; }
 </style>
@@ -125,18 +150,18 @@
       <section class="slide" aria-label="Привет">
         <div class="scene"><canvas data-scene="hello"></canvas></div>
         <h2>Привет, я Жабка 🐸</h2>
-        <p>Я поселюсь в углу твоего экрана, буду кодить вместе с тобой и следить, чтобы ты не превратился в сухарь и памятник.</p>
+        <p>Я поселюсь в углу твоего экрана и буду кодить вместе с тобой, чтобы нам обоим не превратиться в сухарь и памятник. Тыкни меня — ква!</p>
         <div class="chips">
-          <span class="chip">⌨️ печатаешь — я стучу лапками</span>
-          <span class="chip">👀 слежу за курсором</span>
-          <span class="chip">👆 тыкни меня — ква!</span>
+          <span class="chip">⌨️ печатаешь — стучу лапками</span>
+          <span class="chip">👆 наведи на меня — появятся 💧 🤸 🏆</span>
+          <span class="chip">🐸 меню — в меню-баре, в Dock меня нет</span>
         </div>
       </section>
 
       <section class="slide" aria-label="Вода">
         <div class="scene"><canvas data-scene="water"></canvas><span class="pill" data-pill="water"></span></div>
         <h2>Без воды я сохну 💧</h2>
-        <p>Стакан рядом со мной пустеет за <b data-t="water">45 мин</b>. Потом я желтею, морщусь и прошу пить. Попил — жми 💧, и я снова сочная.</p>
+        <p>Стакан рядом со мной пустеет за <b data-t="water">45 мин</b>. Потом я желтею, морщусь и прошу пить. Выпито? Наведи на меня курсор и жми 💧 сбоку — и я снова сочная.</p>
         <div class="chips">
           <span class="chip">💧 каждые <b data-t="water">45 мин</b></span>
           <span class="chip">🔁 переспрошу через <b data-t="nag">10 мин</b></span>
@@ -158,7 +183,7 @@
       <section class="slide" aria-label="Режим">
         <div class="scene small"><canvas data-scene="pick"></canvas></div>
         <h2>Насколько всё серьёзно?</h2>
-        <p>Выбери, как жить будем. Передумаешь — поменяешь в&nbsp;⚙️&nbsp;Настройках.</p>
+        <p>Выбери, как жить будем. Передумаешь — ⚙️&nbsp;Настройки, пауза и&nbsp;🏆&nbsp;Трофеи живут в&nbsp;значке жабы в&nbsp;<span class="nw">меню-баре</span>.</p>
         <div class="modes" role="radiogroup" aria-label="Режим">
           <button class="mode hard" id="mHard" role="radio" aria-checked="true">
             <span class="check"></span>
