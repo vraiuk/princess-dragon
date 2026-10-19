@@ -111,7 +111,9 @@
       if (p.floor && p.y > p.floor) { p.y = p.floor; p.vy *= -0.25; p.vx *= 0.7; }
       keep.push(p);
       const k = p.life / p.max;
-      const a = (p.a == null ? 1 : p.a) * Math.min(1, (1 - k) * 2.5) * Math.min(1, p.life * 12);
+      // у краёв окна гаснут, а не обрезаются ровной линией
+      const edge = clamp(Math.min(p.x + 4, W - p.x, p.y) / 24, 0, 1);
+      const a = (p.a == null ? 1 : p.a) * Math.min(1, (1 - k) * 2.5) * Math.min(1, p.life * 12) * edge;
       if (a <= 0.01) continue;
       g.globalAlpha = a;
       if (p.kind === 'dust') {

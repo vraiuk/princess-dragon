@@ -33,6 +33,11 @@ html, body {
 #bubble button.main { background: #3fae5a; color: #fff; }
 #bubble button:hover { filter: brightness(1.06); }
 #bubble.water button.main { background: #2f8de4; }
+/* вода и движение разом: три кнопки в ряд */
+#bubble button.main.w { background: #2f8de4; }
+#bubble button.main.m { background: #3fae5a; }
+#bubble.both .btns { gap: 5px; }
+#bubble.both button { flex: 1 1 auto; padding-left: 6px; padding-right: 6px; white-space: nowrap; }
 #bubble button:active { transform: scale(.96); }
 
 /* при смерти — тревожное облачко */

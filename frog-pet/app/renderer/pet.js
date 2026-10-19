@@ -6,7 +6,7 @@
   const FLOOR = 268;                       // линия стола (в координатах раскладки)
 
   const cv = document.getElementById('cv');
-  const ctx = cv.getContext('2d', { willReadFrequently: true });
+  const ctx = cv.getContext('2d');      // без willReadFrequently: иначе холст уходит на CPU и каждый кадр тянет back/front с GPU
   const back = document.createElement('canvas');   // тело и голова (за ноутбуком)
   const front = document.createElement('canvas');  // лапки (перед ноутбуком)
   const bctx = back.getContext('2d');
@@ -24,7 +24,7 @@
   // ---------- состояние ----------
   let view = { glass: 1, dry: 0, stone: 0, activity: 'coding', needs: {}, day: {}, paused: false, waterLeftMin: 45, moveLeftMin: 50, sitMin: 0 };
   let settings = { sound: true };
-  const sm = { dry: 0, stone: 0, glass: 1 };      // сглаженные значения для анимации
+  const sm = { dry: 0, stone: 0, glass: 1, crit: 0 };      // сглаженные значения для анимации
   const cursor = { x: 130, y: 400, t: 0 };
   const eye = { x: 0, y: 4 };
   const anim = {};
@@ -72,12 +72,20 @@
   ];
 
   function resize() {
-    dpr = Math.max(1, window.devicePixelRatio || 1);
+    const d = Math.max(1, window.devicePixelRatio || 1);
+    if (d === dpr && back.width === Math.round(W * d) && cv.width === back.width) return;
+    dpr = d;
     for (const c of [cv, back, front]) { c.width = Math.round(W * dpr); c.height = Math.round(H * dpr); }
+    stoneTex = null;
   }
+  let stoneTex = null;    // крапинки и трещины камня рисуются один раз в текстуру
   resize();
   window.addEventListener('resize', resize);
-  matchMedia(`(resolution: ${dpr}dppx)`).addEventListener?.('change', resize);
+  // смена DPR (другой монитор, масштаб жабы) — подписываемся заново на новое значение
+  (function watchDpr() {
+    const mq = matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+    if (mq.addEventListener) mq.addEventListener('change', () => { resize(); watchDpr(); }, { once: true });
+  })();
 
   // ---------- звук «ква» ----------
   let actx = null;
@@ -102,6 +110,11 @@
   }
 
   // ---------- облачко ----------
+  // тост ачивки виден (въезжает, висит или уезжает) — облачко ждёт под ним
+  function toastUp() {
+    const t = document.getElementById('toast');
+    return !!t && (t.classList.contains('show') || t.classList.contains('hide'));
+  }
   function say(text, opts = {}) {
     clearTimeout(bubbleTimer);
     $bubble.querySelector('.txt').textContent = text;
@@ -111,12 +124,11 @@
     (opts.buttons || []).forEach((b) => {
       const el = document.createElement('button');
       el.textContent = b.label;
-      if (b.main) el.className = 'main';
+      el.className = b.cls || (b.main ? 'main' : '');
       el.addEventListener('click', (e) => { e.stopPropagation(); hideBubble(); b.do(); });
       btns.appendChild(el);
     });
-    const t = document.getElementById('toast');
-    $bubble.className = (opts.kind || '') + (t && t.classList.contains('show') ? ' under-toast' : '');
+    $bubble.className = (opts.kind || '') + (toastUp() ? ' under-toast' : '');
     fitBubble();
     bubbleKind = opts.kind || null;
     if (opts.ttl !== Infinity) bubbleTimer = setTimeout(hideBubble, opts.ttl || 6000);
@@ -141,6 +153,65 @@
     bubbleKind = null;
     // у надгробия облачко с кнопкой возвращается само
     if (isDead()) bubbleTimer = setTimeout(() => { if (Death && Death.mode === 'dead' && !bubbleKind) showRip(); }, 2500);
+    else resumeNeeds();
+  }
+
+  // ---------- напоминания ----------
+  // вода и движение могут прийти разом: показываем одним облачком, «при смерти» важнее обычных.
+  // Пока висит другая реплика (тык, «попил»), напоминание ждёт и возвращается после неё.
+  const need = {};          // kind -> { ev, crit, until }
+  let needTimer = null;
+  function clearNeeds() { delete need.water; delete need.move; clearTimeout(needTimer); }
+  function addNeed(kind, ev, crit, ttl) {
+    const old = need[kind];
+    const keep = old && old.crit && !crit && old.until > Date.now();   // обычное не перебивает «при смерти»
+    need[kind] = { ev: keep ? old.ev : ev, crit: crit || !!keep, until: Date.now() + ttl, tip: ev.tip || (old && old.tip) };
+    showNeeds();
+  }
+  function needDo(kind) {
+    return () => { delete need[kind]; bridge.action(kind === 'water' ? 'drink' : 'stretch'); };
+  }
+  function showNeeds() {
+    clearTimeout(needTimer);
+    const t = Date.now();
+    for (const k of ['water', 'move']) if (need[k] && (need[k].until <= t || view.paused)) delete need[k];
+    const w = need.water, m = need.move;
+    if (!w && !m) return false;
+    const ttl = Math.max(1000, Math.min(w ? w.until : Infinity, m ? m.until : Infinity) - t);
+    const later = (kinds) => () => kinds.forEach((k) => { delete need[k]; bridge.action('snooze', { kind: k }); });
+    if (w && m) {
+      const crit = w.crit || m.crit;
+      say(crit ? (w.crit && m.crit ? 'Я при смерти! Воды и встань! 🥵🗿' : w.crit ? 'Я при смерти! ВОДЫ! 🥵 И размяться бы…' : 'Я почти камень! ВСТАНЬ! 🗿 И попить бы…')
+        : 'Двойной дедлайн: попить и размяться!', {
+        kind: (crit ? 'crit' : 'water') + ' both', ttl, tip: crit ? '' : (m.tip || m.ev.tip || ''),
+        buttons: [
+          { label: 'Попил 💧', cls: 'main w', do: needDo('water') },
+          { label: 'Размялся 🤸', cls: 'main m', do: needDo('move') },
+        ].concat(crit ? [] : [{ label: 'Позже', do: later(['water', 'move']) }]),
+      });
+      return true;
+    }
+    const k = w ? 'water' : 'move', n = need[k], ev = n.ev;
+    if (n.crit) {
+      say(ev.text || (k === 'water' ? 'Я при смерти! ВОДЫ! 🥵' : 'Я почти камень! ВСТАНЬ! 🗿'), {
+        kind: 'crit', ttl, tip: k === 'water' ? 'Ещё немного — и я изюм.' : 'Ещё немного — и я памятник.',
+        buttons: [{ label: k === 'water' ? 'Попил 💧' : 'Размялся 🤸', main: true, do: needDo(k) }],
+      });
+    } else {
+      say(ev.text, { kind: k, tip: k === 'move' ? n.tip || ev.tip : '', ttl, buttons: [
+        { label: k === 'water' ? 'Попил 💧' : 'Размялся 🤸', main: true, do: needDo(k) },
+        { label: 'Позже', do: later([k]) },
+      ] });
+    }
+    return true;
+  }
+  // облачко закрылось — если напоминание ещё ждёт ответа, вернуть его
+  function resumeNeeds() {
+    clearTimeout(needTimer);
+    if (!need.water && !need.move) return;
+    needTimer = setTimeout(() => {
+      if (alive() && !bubbleKind && $bubble.classList.contains('hidden')) showNeeds();
+    }, 700);
   }
 
   // ---------- смерть ----------
@@ -164,12 +235,13 @@
     if (!Death) return;
     for (const k of Object.keys(anim)) delete anim[k];
     particles = particles.filter((p) => p.kind === 'chunk');
+    sm.crit = 0;
     hideBubble();
     lifeMismatch = 0;
     Death.die(ev.cause || view.cause || 'stone', deathInfo(ev));
   }
   function startReborn(ev) {
-    if (!Death) return;
+    if (!Death || Death.mode === 'hatching') return;   // повторный reborn не перезапускает яйцо
     hideBubble();
     lifeMismatch = 0;
     sm.dry = 0; sm.stone = 0; sm.glass = 1;
@@ -187,6 +259,7 @@
     if (!syncNow && lifeMismatch < 0.7) return;   // ждём событие death/reborn, оно может прийти чуть позже view
     syncNow = false; lifeMismatch = 0;
     particles = [];
+    sm.crit = 0;
     if (want) { hideBubble(); Death.setDead(view.cause, deathInfo(view)); showRip(); }
     else { Death.reset(); hideBubble(); sm.dry = view.dry || 0; sm.stone = view.stone || 0; }
   }
@@ -202,14 +275,17 @@
     }
     switch (ev.type) {
       case 'death':
+        clearNeeds();
         startDeath(ev);
         break;
       case 'reborn':
+        clearNeeds();
         startReborn(ev);
         break;
       case 'filmEnd':
         // конец съёмки: сбросить анимации и подстроиться под следующий настоящий view без анимаций
         if (Death) Death.reset();
+        clearNeeds();
         hideBubble();
         awaitView = performance.now();
         break;
@@ -220,36 +296,27 @@
       case 'critical':
         anim.alert = { t0: now, dur: 2 };
         croak(0.22);
-        say(ev.text || (ev.kind === 'water' ? 'Я при смерти! ВОДЫ! 🥵' : 'Я почти камень! ВСТАНЬ! 🗿'), {
-          kind: 'crit', ttl: 90000, tip: ev.kind === 'water' ? 'Ещё немного — и я изюм.' : 'Ещё немного — и я памятник.',
-          buttons: ev.kind === 'water'
-            ? [{ label: 'Попил 💧', main: true, do: () => bridge.action('drink') }]
-            : [{ label: 'Размялся 🤸', main: true, do: () => bridge.action('stretch') }],
-        });
+        addNeed(ev.kind === 'water' ? 'water' : 'move', ev, true, 90000);
         break;
       case 'remind':
         anim.alert = { t0: now, dur: 1.4 };
         croak();
-        if (ev.kind === 'water') {
-          say(ev.text, { kind: 'water', ttl: 90000, buttons: [
-            { label: 'Попил 💧', main: true, do: () => bridge.action('drink') },
-            { label: 'Позже', do: () => bridge.action('snooze', { kind: 'water' }) },
-          ] });
-        } else {
-          say(ev.text, { kind: 'move', tip: ev.tip, ttl: 90000, buttons: [
-            { label: 'Размялся 🤸', main: true, do: () => bridge.action('stretch') },
-            { label: 'Позже', do: () => bridge.action('snooze', { kind: 'move' }) },
-          ] });
-        }
+        addNeed(ev.kind === 'water' ? 'water' : 'move', ev, false, 90000);
         break;
       case 'drink':
+        delete need.water;
         anim.drink = { t0: now, dur: 1.9 };
         say(ev.text, { ttl: 4000 });
         break;
       case 'stretch':
       case 'back':
+        delete need.move;
         startJump(now);
         say(ev.text, { ttl: 5000 });
+        break;
+      case 'paused':
+        clearNeeds();
+        if (ev.text) say(ev.text, { ttl: 3500 });
         break;
       case 'poke':
         anim.squish = { t0: now, dur: 0.55 };
@@ -259,10 +326,7 @@
       case 'morning':
         anim.alert = { t0: now, dur: 1.4 };
         croak();
-        say(ev.text, { kind: 'water', ttl: 120000, buttons: [
-          { label: 'Попил 💧', main: true, do: () => bridge.action('drink') },
-          { label: 'Позже', do: () => bridge.action('snooze', { kind: 'water' }) },
-        ] });
+        addNeed('water', ev, false, 120000);
         break;
       default:
         if (ev.text) say(ev.text, { ttl: 3500 });
@@ -322,8 +386,9 @@
     }
   }
 
-  // 0..1 — насколько жаба «при смерти»
-  function critLevel() {
+  // 0..1 — насколько жаба «при смерти» (сглажено: после «попил» красное гаснет плавно)
+  const critLevel = () => (sm.crit > 0.01 ? sm.crit : 0);
+  function critTarget() {
     if (!alive() || !view.critical) return 0;
     const c = view.critical, d = view.doom || {};
     let k = 0;
@@ -391,6 +456,9 @@
     const phones = !(fx && fx.hidePhones);
     const pdy = fx && fx.phonesDY ? fx.phonesDY : 0;
     if (phones) {
+      // светлый кант — чтобы тёмные наушники не терялись на тёмных обоях
+      g.strokeStyle = 'rgba(205,215,240,.35)'; g.lineWidth = 12;
+      g.beginPath(); g.arc(130, 152 + pdy, 76, Math.PI * 1.07, Math.PI * 1.93); g.stroke();
       g.strokeStyle = '#1f2330'; g.lineWidth = 9;
       g.beginPath(); g.arc(130, 152 + pdy, 76, Math.PI * 1.06, Math.PI * 1.94); g.stroke();
       g.strokeStyle = '#4a5268'; g.lineWidth = 3;
@@ -408,6 +476,8 @@
     // наушники: чашки поверх
     const led = view.paused ? '#ff5d5d' : view.activity === 'coding' ? '#6ee7b7' : '#8aa0ff';
     for (const [x, dir] of phones ? [[62, -1], [198, 1]] : []) {
+      g.strokeStyle = 'rgba(205,215,240,.35)'; g.lineWidth = 3;
+      rr(g, x - 9, 132 + pdy, 18, 38, 8); g.stroke();
       g.fillStyle = '#1f2330';
       rr(g, x - 9, 132 + pdy, 18, 38, 8); g.fill();
       g.fillStyle = '#343b50';
@@ -575,16 +645,7 @@
     g.fillStyle = gr;
     g.fillRect(-10, y0 - 10, W + 20, H);
     g.globalAlpha = 1;
-    for (const p of STONE.specks) {
-      g.fillStyle = p.s > 0.5 ? 'rgba(60,60,58,.45)' : 'rgba(235,235,228,.45)';
-      g.beginPath(); g.arc(p.x, p.y, p.r, 0, Math.PI * 2); g.fill();
-    }
-    g.strokeStyle = 'rgba(50,50,48,.7)'; g.lineWidth = 1.3;
-    for (const pts of STONE.cracks) {
-      g.beginPath(); g.moveTo(pts[0][0], pts[0][1]);
-      for (const p of pts.slice(1)) g.lineTo(p[0], p[1]);
-      g.stroke();
-    }
+    g.drawImage(stoneTexture(), 0, 0, W, H);
     if (s > 0.7) {
       g.globalAlpha = (s - 0.7) / 0.3;
       for (const m of STONE.moss) {
@@ -600,6 +661,27 @@
     for (let x = -10; x <= W + 10; x += 6) g.lineTo(x, y0 + 1.5 + 4 * Math.sin(x * 0.13 + 1.7) + 2.5 * Math.sin(x * 0.37));
     g.stroke();
     g.restore();
+  }
+
+  // 220 крапинок и трещины каждый кадр на двух слоях — дорого; рисуем один раз
+  function stoneTexture() {
+    if (stoneTex) return stoneTex;
+    stoneTex = document.createElement('canvas');
+    stoneTex.width = Math.round(W * dpr); stoneTex.height = Math.round(H * dpr);
+    const g = stoneTex.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.lineJoin = 'round'; g.lineCap = 'round';
+    for (const p of STONE.specks) {
+      g.fillStyle = p.s > 0.5 ? 'rgba(60,60,58,.45)' : 'rgba(235,235,228,.45)';
+      g.beginPath(); g.arc(p.x, p.y, p.r, 0, Math.PI * 2); g.fill();
+    }
+    g.strokeStyle = 'rgba(50,50,48,.7)'; g.lineWidth = 1.3;
+    for (const pts of STONE.cracks) {
+      g.beginPath(); g.moveTo(pts[0][0], pts[0][1]);
+      for (const p of pts.slice(1)) g.lineTo(p[0], p[1]);
+      g.stroke();
+    }
+    return stoneTex;
   }
 
   function drawFront(g, t, C) {
@@ -745,7 +827,7 @@
 
     // «при смерти»: тревожный значок с пульсирующими кольцами
     const cr = critLevel();
-    if (cr && !bubbleKind) {
+    if (critTarget() && !bubbleKind) {
       const hb = heartbeat(t);
       const x = 130, y = 66 + OY + Math.sin(t * 3) * 2;
       g.save();
@@ -766,7 +848,7 @@
       g.restore();
     }
     // капли пота от ужаса
-    if (cr && Math.random() < 0.06) particles.push({ kind: 'drop', x: rnd(80, 180), y: rnd(110, 140) + OY, vx: rnd(-0.6, 0.6), vy: rnd(-1.5, 0), size: rnd(1.6, 2.6), life: 0, max: 0.7 });
+    if (critTarget() && Math.random() < 0.06) particles.push({ kind: 'drop', x: rnd(80, 180), y: rnd(110, 140) + OY, vx: rnd(-0.6, 0.6), vy: rnd(-1.5, 0), size: rnd(1.6, 2.6), life: 0, max: 0.7 });
 
     // значок нужды над головой
     if (!cr && alive() && !bubbleKind && (view.needs.water || view.needs.move) && view.activity !== 'away') {
@@ -792,6 +874,9 @@
         g.fillStyle = p.color;
         g.font = `bold ${p.size}px Menlo, Monaco, monospace`;
         g.textAlign = 'center';
+        // тёмная обводка — светлые символы видны и на белых обоях
+        g.strokeStyle = 'rgba(16,24,40,.55)'; g.lineWidth = 2.5; g.lineJoin = 'round';
+        g.strokeText(p.text, p.x, p.y);
         g.fillText(p.text, p.x, p.y);
       } else if (p.kind === 'z') {
         p.y -= 12 * dt; p.x += 8 * dt;
@@ -837,10 +922,13 @@
     requestAnimationFrame(frame);
     const t = performance.now() / 1000;
     const dt = Math.min(0.1, t - lastT);
-    // ~30 fps; во сне — ещё реже, чтобы не жечь батарею
-    const calm = !Object.keys(anim).length && !critLevel();
-    const step = calm && view.activity === 'away' && alive() ? 1 / 12
-      : calm && Death && Death.mode === 'dead' && !particles.length ? 1 / 20 : 1 / 30;
+    // ~30 fps только когда что-то происходит (анимация, наведение, смерть); в покое — реже
+    const calm = !Object.keys(anim).length && !critLevel() && !drag;
+    const quiet = calm && !hover && (!Death || Death.mode === 'none');
+    const step = quiet && view.activity === 'away' ? 1 / 12
+      : calm && Death && Death.mode === 'dead' && !particles.length ? 1 / 20
+      : quiet && view.activity === 'coding' ? 1 / 24
+      : quiet ? 1 / 15 : 1 / 30;
     acc += dt; lastT = t;
     // допуск на дрожание rAF (60 Гц): иначе вместо 30 кадров выходит ~22
     if (acc < step - 0.004) return;
@@ -861,6 +949,8 @@
     const r2 = 1 - Math.exp(-dt * 4);
     sm.dry = fx && fx.dry != null ? lerp(sm.dry, fx.dry, r2) : lerp(sm.dry, view.dry || 0, anim.drink ? rate * 0.6 : rate);
     sm.stone = fx && fx.stone != null ? lerp(sm.stone, fx.stone, r2) : lerp(sm.stone, view.stone || 0, rate);
+    const ct = critTarget();
+    sm.crit = first || ct > sm.crit ? ct : lerp(sm.crit, ct, 1 - Math.exp(-dt * 2.5));
     sm.glass = lerp(sm.glass, anim.drink && t - anim.drink.t0 < 0.9 ? Math.max(0, sm.glass - 0.02) : view.glass, rate);
 
     // моргание
@@ -901,8 +991,8 @@
       if (p < 0.55) {
         for (let i = 0; i < 2; i++) {
           // струйка из стакана в рот по параболе
-          const sx = 214 + rnd(-3, 3), sy = 212 + OY, tx2 = 130 + rnd(-6, 6), ty2 = 164 + OY, T = 32;
-          particles.push({ kind: 'drop', x: sx, y: sy, vx: (tx2 - sx) / T, vy: (ty2 - sy) / T - 0.5 * 9.8 * 0.12 * T, size: rnd(2, 3.4), life: 0, max: 0.55 });
+          const sx = 214 + rnd(-3, 3), sy = 212 + OY, tx2 = 130 + rnd(-6, 6), ty2 = 164 + OY, T = 22;   // невысокая дуга: на уровне глаз, а не фонтан над головой
+          particles.push({ kind: 'drop', x: sx, y: sy, vx: (tx2 - sx) / T, vy: (ty2 - sy) / T - 0.5 * 9.8 * 0.12 * T, size: rnd(2, 3.4), life: 0, max: T / 60 });
         }
       } else if (Math.random() < 0.5) {
         particles.push({ kind: 'spark', x: rnd(70, 190), y: rnd(90, 200) + OY, size: rnd(4, 8), color: Math.random() < 0.5 ? '#bfe6ff' : '#ffffff', life: 0, max: rnd(0.4, 0.8) });
@@ -955,8 +1045,7 @@
   let sideStamp = '';
   function updateSide() {
     // пока висит тост ачивки, облачко прячется под него и возвращается после
-    const toast = document.getElementById('toast');
-    $bubble.classList.toggle('under-toast', !!(toast && toast.classList.contains('show')));
+    $bubble.classList.toggle('under-toast', toastUp());
     const dead = !alive();
     const stamp = [view.waterLeftMin, view.moveLeftMin, view.needs.water, view.needs.move, hover, dead].join();
     if (stamp === sideStamp) return;
@@ -979,16 +1068,27 @@
     const r = $pet.getBoundingClientRect();
     const el = document.elementFromPoint(r.left + x, r.top + y);
     if (el && el !== cv && el.closest('#bubble:not(.hidden), #side:not(.hidden), #toast.show')) return true;
-    // вся зона жабы целиком, чтобы не мигало между пикселями (без чтения пикселей)
-    if (x > 56 && x < 240 && y > 80 + OY && y < FLOOR + OY + 4) return true;
-    // вне зоны — по пикселю; курсор из main приходит 20 раз в секунду, поэтому кешируем
-    const now = performance.now();
-    if (hitMemo.x === x && hitMemo.y === y && now - hitMemo.t < 250) return hitMemo.v;
-    const px = ctx.getImageData(Math.floor(x * dpr), Math.floor(y * dpr), 1, 1).data;
-    hitMemo = { x, y, t: now, v: px[3] > 24 };
-    return hitMemo.v;
+    // жаба с ноутбуком и стакан целиком, чтобы не мигало между пикселями (без чтения пикселей);
+    // пустое место над стаканом пропускает клики
+    if (x > 56 && x < 208 && y > 80 + OY && y < FLOOR + OY + 4) return true;
+    if (x >= 196 && x < 240 && y > 206 + OY && y < FLOOR + OY + 4) return true;
+    // вне зоны — по маске прозрачности (уменьшенная копия холста, обновляется не чаще 5 раз в секунду)
+    return hitAlpha(x, y) > 16;
   }
-  let hitMemo = { x: -1, y: -1, t: 0, v: false };
+  const MS = 4, mask = document.createElement('canvas');
+  mask.width = Math.ceil(W / MS); mask.height = Math.ceil(H / MS);
+  const mctx = mask.getContext('2d', { willReadFrequently: true });
+  let maskData = null, maskAt = 0;
+  function hitAlpha(x, y) {
+    const now = performance.now();
+    if (!maskData || now - maskAt > 200) {
+      mctx.clearRect(0, 0, mask.width, mask.height);
+      mctx.drawImage(cv, 0, 0, mask.width, mask.height);
+      maskData = mctx.getImageData(0, 0, mask.width, mask.height).data;
+      maskAt = now;
+    }
+    return maskData[(Math.floor(y / MS) * mask.width + Math.floor(x / MS)) * 4 + 3];
+  }
 
   function setHover(h) {
     if (h) { hover = true; hoverOff = 0; }
@@ -1066,6 +1166,7 @@
   window.__frogDebug = {
     event: (ev) => onEvent(ev),
     view(patch) { debugPatch = patch ? Object.assign(debugPatch || {}, patch) : null; setView(view); },
+    hit: (x, y) => isHit(x, y),
     state: () => ({ mode: Death ? Death.mode : 'none', life: view.life, sm: Object.assign({}, sm), particles: particles.length, frames, death: Death && Death.stats ? Death.stats() : null }),
   };
 })();

@@ -299,7 +299,7 @@
     const dry = list.filter((g) => g.cause === 'dry').length, stone = list.length - dry;
     $('#pane-grave').innerHTML = `
       <div class="grave-head">
-        <div class="gh-t">Здесь покоятся ${list.length} ${plural(list.length, 'жаба', 'жабы', 'жаб')}</div>
+        <div class="gh-t">Здесь ${plural(list.length, 'покоится', 'покоятся', 'покоятся')} ${list.length} ${plural(list.length, 'жаба', 'жабы', 'жаб')}</div>
         <div class="gh-s">🥵 засохло: ${dry} · 🗿 окаменело: ${stone} · Минута молчания. Потом стакан воды.</div>
       </div>
       <div class="graves">${list.map((g) => {

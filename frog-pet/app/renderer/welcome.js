@@ -525,8 +525,12 @@
     $('bNext').classList.toggle('big', false);
     const sc = scenes[cur];
     if (sc) { sc.t0 = performance.now() / 1000; sc.parts = []; sc.jumped = false; sc.lastPill = ''; }
-    document.querySelectorAll('.slide').forEach((s, j) => s.setAttribute('aria-hidden', String(j !== cur)));
+    // невидимые экраны выключены из Tab: иначе фокус уезжает на последний слайд и сцена сдвигается
+    document.querySelectorAll('.slide').forEach((s, j) => { s.setAttribute('aria-hidden', String(j !== cur)); s.inert = j !== cur; });
+    $track.parentElement.scrollLeft = 0;
   }
+  // браузер сам прокручивает .stage к сфокусированному элементу — возвращаем на место
+  $track.parentElement.addEventListener('scroll', (e) => { e.currentTarget.scrollLeft = 0; });
 
   $('bBack').addEventListener('click', () => go(cur - 1));
   $('bNext').addEventListener('click', () => (cur === N - 1 ? finish() : go(cur + 1)));

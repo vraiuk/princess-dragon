@@ -27,7 +27,7 @@
   const realDpr = window.devicePixelRatio || 1;
   let zoom = 1;
   function calcZoom() {
-    if (VERT) return Math.max(1, Math.min(innerWidth * 0.98 / 260, (innerHeight - 250) / 320));
+    if (VERT) return Math.max(1, Math.min(innerWidth * 0.98 / 260, (innerHeight - 330) / 320));   // место под подпись сверху и HUD снизу
     if (CLEAN) return Math.max(0.5, Math.min(2, innerWidth / 280, innerHeight / 330));
     return 1;
   }
@@ -102,7 +102,9 @@
       transform: translate(-50%, -50%) scale(var(--z, 2)); }
     html.demo-916 .demo-cap { top: 52px; font-size: 26px; padding: 12px 20px; border-radius: 20px; width: max-content; }
     html.demo-916 .demo-hud { display: flex; position: fixed; left: 50%; bottom: 34px; transform: translateX(-50%); z-index: 6; gap: 6px;
-      font: 700 13px/1 Menlo, ui-monospace, monospace; color: #e9ecff; white-space: nowrap; }
+      font: 700 13px/1 Menlo, ui-monospace, monospace; color: #e9ecff; white-space: nowrap;
+      max-width: calc(100vw - 16px); flex-wrap: wrap; justify-content: center; }
+    @media (max-width: 480px) { html.demo-916 .demo-hud { font-size: 11px; gap: 4px; bottom: 24px; } .demo-hud span { padding: 6px 7px; } }
     .demo-hud span { padding: 7px 9px; border-radius: 12px; background: rgba(255,255,255,.1); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); }
     .demo-hud .ff { background: #b5487a; opacity: 0; transition: opacity .25s; }
     .demo-hud .ff.on { opacity: 1; }
