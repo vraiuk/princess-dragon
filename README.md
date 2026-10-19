@@ -14,3 +14,7 @@
 - пиксель-арт: https://vraiuk.github.io/princess-dragon/pixel/
 - бумажная аппликация: https://vraiuk.github.io/princess-dragon/paper/
 - театр теней: https://vraiuk.github.io/princess-dragon/shadow/
+
+## 🐸 Жабка
+
+В папке [`frog-pet/`](frog-pet/) — питомец-программист для macOS в том же духе «всё нарисовано кодом»: жаба сохнет, если не пьёшь воду, и каменеет, если долго сидишь. Демо: https://vraiuk.github.io/princess-dragon/frog-pet/app/renderer/

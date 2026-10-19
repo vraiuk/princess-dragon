@@ -1,0 +1,49 @@
+{
+  "name": "frog-pet",
+  "productName": "Zhabka",
+  "version": "1.0.0",
+  "description": "Жабка — питомец-программист для macOS: сохнет без воды и каменеет без разминки",
+  "main": "app/main.js",
+  "author": "vraiuk",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/",
+    "dist": "electron-builder --mac --universal",
+    "dist:arm": "electron-builder --mac --arm64",
+    "dist:intel": "electron-builder --mac --x64"
+  },
+  "devDependencies": {
+    "electron": "^38.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.vraiuk.zhabka",
+    "productName": "Zhabka",
+    "copyright": "🐸",
+    "files": ["app/**/*", "package.json"],
+    "directories": { "buildResources": "build", "output": "dist" },
+    "artifactName": "Zhabka-${version}-${arch}.${ext}",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png",
+      "target": ["dmg", "zip"],
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "extendInfo": {
+        "LSUIElement": true,
+        "CFBundleDisplayName": "Жабка",
+        "NSHumanReadableCopyright": "Жабка — питомец-программист"
+      }
+    },
+    "dmg": {
+      "title": "Zhabka",
+      "contents": [
+        { "x": 140, "y": 180 },
+        { "x": 400, "y": 180, "type": "link", "path": "/Applications" }
+      ]
+    }
+  }
+}

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<title>Жабка</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="pet">
+  <canvas id="cv" width="260" height="320"></canvas>
+  <div id="bubble" class="hidden">
+    <div class="txt"></div>
+    <div class="tip"></div>
+    <div class="btns"></div>
+  </div>
+  <div id="side" class="hidden">
+    <button id="bDrink" class="ring" title="Я попил воды">💧</button>
+    <button id="bMove" class="ring" title="Я размялся">🤸</button>
+  </div>
+</div>
+<script src="../core.js"></script>
+<script src="demo.js"></script>
+<script src="pet.js"></script>
+</body>
+</html>

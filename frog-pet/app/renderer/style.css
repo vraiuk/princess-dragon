@@ -1,0 +1,56 @@
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0; background: transparent; overflow: hidden;
+  font: 13px/1.3 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  -webkit-user-select: none; user-select: none;
+}
+
+#pet { position: relative; width: 260px; height: 320px; }
+#cv { position: absolute; inset: 0; width: 260px; height: 320px; cursor: grab; }
+#cv.dragging { cursor: grabbing; }
+
+/* ---------- облачко с репликой ---------- */
+#bubble {
+  position: absolute; left: 10px; right: 10px; bottom: 214px;
+  background: #fffdf5; color: #1f2a22; border-radius: 16px; padding: 9px 12px 10px;
+  box-shadow: 0 4px 14px rgba(0,0,0,.28), 0 0 0 1.5px #1d3b26;
+  transform-origin: 50% 100%; transition: opacity .2s, transform .25s cubic-bezier(.3,1.6,.5,1);
+}
+#bubble::after {
+  content: ""; position: absolute; left: 50%; bottom: -9px; width: 16px; height: 16px; margin-left: -8px;
+  background: #fffdf5; transform: rotate(45deg); box-shadow: 1.5px 1.5px 0 0 #1d3b26;
+}
+#bubble.hidden { opacity: 0; transform: scale(.6) translateY(10px); pointer-events: none; }
+#bubble .txt { font-weight: 600; }
+#bubble .tip { margin-top: 4px; font-size: 12px; color: #4b5a4f; }
+#bubble .tip:empty, #bubble .btns:empty { display: none; }
+#bubble .btns { display: flex; gap: 6px; margin-top: 8px; position: relative; z-index: 1; }
+#bubble button {
+  flex: 1; border: 0; border-radius: 10px; padding: 5px 8px; cursor: pointer;
+  font: 600 12.5px/1.2 inherit; font-family: inherit; background: #e7efe4; color: #1f2a22;
+}
+#bubble button.main { background: #3fae5a; color: #fff; }
+#bubble button:hover { filter: brightness(1.06); }
+#bubble.water button.main { background: #2f8de4; }
+
+/* ---------- кнопки сбоку (видны при наведении) ---------- */
+#side {
+  position: absolute; left: 6px; top: 206px; display: flex; flex-direction: column; gap: 8px;
+  transition: opacity .2s, transform .2s;
+}
+#side.hidden { opacity: 0; transform: translateX(-8px); pointer-events: none; }
+.ring {
+  --p: 1; --c: #2f8de4;
+  width: 40px; height: 40px; border-radius: 50%; border: 0; padding: 0; cursor: pointer; font-size: 19px;
+  display: grid; place-items: center;
+  background:
+    radial-gradient(circle, #fffdf5 0 15px, transparent 15.5px),
+    conic-gradient(var(--c) calc(var(--p) * 360deg), rgba(0,0,0,.18) 0);
+  box-shadow: 0 3px 8px rgba(0,0,0,.3), 0 0 0 1.5px #1d3b26;
+  transition: transform .15s;
+}
+.ring:hover { transform: scale(1.1); }
+.ring:active { transform: scale(.94); }
+#bMove { --c: #3fae5a; }
+.ring.alert { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { transform: scale(1.12); box-shadow: 0 3px 14px rgba(255,90,60,.7), 0 0 0 1.5px #1d3b26; } }
