@@ -278,6 +278,12 @@ function checkAchievements(events) {
 
 function act(type, opts = {}) {
   const p = curPet(), now = curNow();
+  // режиссёр съёмки «держит» вторую потребность без событий и ачивок
+  if (opts.silent && film && Showcase && typeof Showcase.quiet === 'function') {
+    Showcase.quiet(p, type);
+    send('view', p.view(now));
+    return;
+  }
   let ev = null;
   const extra = [];
   if (type === 'drink') ev = p.drink(now);
