@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+<title>Трофеи — Жабка</title>
+<link rel="stylesheet" href="ui.css">
+<link rel="stylesheet" href="trophies.css">
+</head>
+<body class="tr">
+<header class="tr-head">
+  <div class="tr-title"><span class="tr-logo">🏆</span> Трофеи</div>
+  <nav class="tr-tabs" role="tablist">
+    <button role="tab" data-tab="ach" aria-selected="true">🎖️ Ачивки</button>
+    <button role="tab" data-tab="stats" aria-selected="false">📊 Статистика</button>
+    <button role="tab" data-tab="grave" aria-selected="false">🪦 Кладбище</button>
+  </nav>
+  <div class="tr-spacer"></div>
+</header>
+<main class="tr-main">
+  <section id="pane-ach" class="tr-pane" role="tabpanel"></section>
+  <section id="pane-stats" class="tr-pane" role="tabpanel" hidden></section>
+  <section id="pane-grave" class="tr-pane" role="tabpanel" hidden></section>
+</main>
+<script src="trophies.js"></script>
+</body>
+</html>
