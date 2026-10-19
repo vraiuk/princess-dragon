@@ -2,25 +2,39 @@ const H = require('./harness');
 const { screen } = require('electron');
 // Круг 2 (r1-07, r1-04-02): падения рендера, масштаб у края и во время drag, съёмка поверх спрятанной/мёртвой жабы
 const alive = (w) => w && !w.isDestroyed() && !w.webContents.isCrashed();
+// уронить рендер и дождаться, что main об этом узнал (render-process-gone приходит асинхронно)
+const crash = (w) => {
+  const gone = new Promise((r) => w.webContents.once('render-process-gone', () => r(true)));
+  w.webContents.forcefullyCrashRenderer();
+  return H.within(gone, 10000, false);
+};
+// выполнить JS в окне; упавшее или перезагружающееся окно может не ответить — тогда fallback
+const probe = (w, js, fallback, dead = fallback) => (alive(w) ? H.within(H.exec(w, js).catch(() => fallback), 2000, fallback) : Promise.resolve(dead));
 
 module.exports = async (api) => {
   H.trayTitle(api); H.trayMenu(api);
   await H.sleep(1500);
 
-  // r1-07-01: упал рендер окна жабы — main сам поднимает его заново
+  // r1-07-01: упал рендер окна жабы — main сам поднимает его заново.
+  // isCrashed() становится true не сразу после forcefullyCrashRenderer(), поэтому сначала ждём само падение,
+  // потом — пока окно снова ответит. Перезагрузка рендера на медленной машине (CI, старый Mac) занимает секунды.
   const W = api.win;
-  W.webContents.forcefullyCrashRenderer();
-  await H.until(() => alive(W), 8000); await H.sleep(1500);
-  const bridge = alive(W) ? await H.within(H.exec(W, 'typeof window.frog + typeof window.__frogDebug'), 3000, 'timeout') : 'crashed';
+  await H.until(() => W.isVisible(), 20000);
+  H.ok(await crash(W), 'frog renderer crashed');
+  let bridge = 'crashed';
+  await H.until(async () => (bridge = await probe(W, 'typeof window.frog + typeof window.__frogDebug', 'timeout', 'crashed')) === 'objectobject', 25000, 200);
   H.ok(api.win === W && bridge === 'objectobject', 'frog renderer recovered after crash: ' + bridge);
+  H.ok(await H.until(() => W.isVisible(), 5000), 'frog window visible after recovery');
 
   // r1-07-05: окно настроек упало — повторное открытие показывает живое окно, а не пустое
-  const s1 = api.openWindow('settings'); await H.sleep(1500);
-  s1.webContents.forcefullyCrashRenderer(); await H.sleep(200);
+  const s1 = api.openWindow('settings');
+  await H.until(async () => (await probe(s1, 'document.body.innerText.length', -1)) > 50, 20000, 200);
+  H.ok(await crash(s1), 'settings renderer crashed');
   const s2 = api.openWindow('settings');
-  await H.until(() => alive(s2), 6000); await H.sleep(1500);
-  const len = alive(s2) ? await H.within(H.exec(s2, 'document.body.innerText.length'), 3000, -1) : -1;
+  let len = -1;
+  await H.until(async () => (len = await probe(s2, 'document.body.innerText.length', -1)) > 50, 25000, 200);
   H.ok(len > 50, 'settings reopened alive after crash, text ' + len);
+  H.ok(await H.until(() => alive(s2) && s2.isVisible(), 5000), 'settings window visible after reopen');
   if (alive(s2)) s2.close();
 
   // r1-07-02: смена масштаба у левого верхнего края не уводит окно за экран
