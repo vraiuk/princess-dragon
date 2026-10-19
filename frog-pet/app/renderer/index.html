@@ -11,15 +11,16 @@
 <body>
 <div id="pet">
   <canvas id="cv" width="260" height="320"></canvas>
-  <div id="bubble" class="hidden">
+  <div id="bubble" class="hidden" role="status" aria-live="polite">
     <div class="txt"></div>
     <div class="tip"></div>
     <div class="btns"></div>
   </div>
+  <div id="caption" class="off" aria-live="polite"></div>
   <div id="side" class="hidden">
-    <button id="bDrink" class="ring" title="Я попил воды">💧</button>
-    <button id="bMove" class="ring" title="Я размялся">🤸</button>
-    <button id="bTrophy" class="mini" title="Трофеи и статистика">🏆</button>
+    <button id="bDrink" class="ring" title="Я попил воды" aria-label="Отметить: стакан воды выпит">💧</button>
+    <button id="bMove" class="ring" title="Я размялся" aria-label="Отметить: разминка сделана">🤸</button>
+    <button id="bTrophy" class="mini" title="Трофеи и статистика" aria-label="Трофеи и статистика">🏆</button>
   </div>
 </div>
 <script src="../core.js"></script>

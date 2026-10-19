@@ -30,12 +30,12 @@ html, body {
   flex: 1; border: 0; border-radius: 10px; padding: 5px 8px; cursor: pointer;
   font: 600 12.5px/1.2 inherit; font-family: inherit; background: #e7efe4; color: #1f2a22;
 }
-#bubble button.main { background: #3fae5a; color: #fff; }
+#bubble button.main { background: #25823f; color: #fff; }   /* белый текст: контраст ≥ 4.5:1 */
 #bubble button:hover { filter: brightness(1.06); }
-#bubble.water button.main { background: #2f8de4; }
+#bubble.water button.main { background: #1b6fc2; }
 /* вода и движение разом: три кнопки в ряд */
-#bubble button.main.w { background: #2f8de4; }
-#bubble button.main.m { background: #3fae5a; }
+#bubble button.main.w { background: #1b6fc2; }
+#bubble button.main.m { background: #25823f; }
 #bubble.both .btns { gap: 5px; }
 #bubble.both button { flex: 1 1 auto; padding-left: 6px; padding-right: 6px; white-space: nowrap; }
 #bubble button:active { transform: scale(.96); }
@@ -46,6 +46,7 @@ html, body {
   box-shadow: 0 4px 18px rgba(220,40,50,.45), 0 0 0 2px #c8283a;
   animation: critShake 1.6s ease-in-out infinite;
 }
+#pet.away #bubble.crit { animation: none; }   /* человек отошёл — трясти некому */
 #bubble.crit::after { background: #fff4f2; box-shadow: 2px 2px 0 0 #c8283a; }
 #bubble.crit .tip { color: #8a2a36; }
 #bubble.crit button.main { background: #d7303f; }
@@ -62,7 +63,7 @@ html, body {
 #bubble.dead .tip { color: #5a605a; font-size: 11.5px; }
 #bubble.dead button.main {
   background: linear-gradient(180deg, #ffe58a, #f5c542); color: #4a3500; font-size: 13.5px; padding: 7px 10px;
-  box-shadow: 0 2px 0 #c99a1a; animation: eggBtn 2.4s ease-in-out infinite;
+  box-shadow: 0 2px 0 #c99a1a; animation: eggBtn 2.4s ease-in-out 3;   /* привлечь внимание и затихнуть: надгробие стоит часами */
 }
 @keyframes eggBtn { 0%, 80%, 100% { transform: none; } 85% { transform: rotate(-3deg); } 90% { transform: rotate(3deg); } 95% { transform: rotate(-1.5deg); } }
 
@@ -74,7 +75,7 @@ html, body {
 #bubble.fit1 button { padding: 4px 8px; font-size: 12px; }
 #bubble.fit2 .txt, #bubble.fit2 .tip { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
 #bubble.fit2 .txt { -webkit-line-clamp: 3; }
-#bubble.fit2 .tip { -webkit-line-clamp: 1; }
+#bubble.fit2 .tip { -webkit-line-clamp: 3; }   /* совет — что именно сделать — не режем */
 #bubble.fit2 .tip:empty { display: none; }
 
 /* фолбэк ачивки без toast.js */
@@ -108,4 +109,24 @@ html, body {
 .mini:hover { transform: scale(1.12) rotate(-6deg); }
 .mini:active { transform: scale(.94); }
 .ring.alert { animation: pulse 1.2s ease-in-out infinite; }
+#side.hidden .ring.alert { animation: none; }   /* невидимые кнопки не пульсируют впустую */
 @keyframes pulse { 50% { transform: scale(1.12); box-shadow: 0 3px 14px rgba(255,90,60,.7), 0 0 0 1.5px #1d3b26; } }
+
+/* ---------- титр съёмки (событие caption) ---------- */
+#caption {
+  position: absolute; left: 6px; right: 6px; bottom: 8px; z-index: 40; pointer-events: none;
+  padding: 6px 10px; border-radius: 12px; background: rgba(12,18,14,.78); color: #fff;
+  font-weight: 800; font-size: 18px; line-height: 1.2; max-width: 248px; margin: 0 auto;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; letter-spacing: -.01em; text-align: center; text-wrap: balance;
+  text-shadow: 0 1px 2px rgba(0,0,0,.6); box-shadow: 0 4px 14px rgba(0,0,0,.35);
+  transition: opacity .25s, transform .25s;
+}
+#caption.off { opacity: 0; transform: translateY(8px); }
+
+/* ---------- меньше движения: без бесконечной тряски и пульса ---------- */
+@media (prefers-reduced-motion: reduce) {
+  #bubble, #side, #caption { transition: opacity .2s; }
+  #bubble.crit, #bubble.dead button.main, .ring.alert { animation: none; }
+  .ring.alert { box-shadow: 0 3px 14px rgba(255,90,60,.7), 0 0 0 1.5px #1d3b26; }
+  .ring:hover, .mini:hover { transform: none; }
+}
