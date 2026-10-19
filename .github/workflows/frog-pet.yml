@@ -6,6 +6,11 @@ on:
     tags: ['frog-v*']
     paths: ['frog-pet/**', '.github/workflows/frog-pet.yml']
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Тег релиза, например frog-v2.0.0 (пусто — только сборка)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -41,10 +46,12 @@ jobs:
             frog-pet/dist/*.zip
           if-no-files-found: error
       - name: Релиз
-        if: startsWith(github.ref, 'refs/tags/frog-v')
+        if: startsWith(github.ref, 'refs/tags/frog-v') || inputs.release_tag != ''
         uses: softprops/action-gh-release@v2
         with:
-          name: Жабка ${{ github.ref_name }}
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: Жабка ${{ inputs.release_tag || github.ref_name }}
           files: |
             frog-pet/dist/*.dmg
             frog-pet/dist/*.zip
