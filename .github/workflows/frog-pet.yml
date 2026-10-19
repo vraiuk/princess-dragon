@@ -31,8 +31,10 @@ jobs:
           cache: npm
           cache-dependency-path: frog-pet/package-lock.json
       - run: npm ci
-      - name: Юнит-тесты и фазз
+      - name: Юнит-тесты и фазз (80 недель)
         run: npm test
+        env:
+          FUZZ_RUNS: '80'
       - name: Playwright для UI-проверок (не в devDependencies)
         run: |
           npm i --no-save playwright@1.56.1
