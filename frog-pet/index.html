@@ -12,9 +12,6 @@
 <meta name="theme-color" content="#fffdf5" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#14201a" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐸</text></svg>">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg:#fffdf5; --bg2:#f4f1e2; --card:#ffffff; --ink:#1f2a22; --muted:#5d6b60; --line:#1d3b26;
@@ -37,9 +34,9 @@
   *{box-sizing:border-box}
   html{scroll-behavior:smooth}
   html,body{margin:0;overflow-x:hidden}
-  body{background:var(--bg);color:var(--ink);font:17px/1.6 Nunito,system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+  body{background:var(--bg);color:var(--ink);font:17px/1.6 ui-rounded,'SF Pro Rounded',Nunito,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;-webkit-font-smoothing:antialiased}
   a{color:var(--green2)}
-  code,kbd,pre{font-family:'JetBrains Mono',ui-monospace,Menlo,monospace}
+  code,kbd,pre{font-family:ui-monospace,'SF Mono',Menlo,'JetBrains Mono',Consolas,monospace}
   code{background:var(--code);padding:1px 6px;border-radius:6px;font-size:.88em}
   .wrap{max-width:1120px;margin:0 auto;padding:0 16px}
   section{padding:72px 0}
@@ -93,6 +90,7 @@
 
   /* ---------- фичи ---------- */
   .grid{display:grid;gap:20px}
+  .grid>*{min-width:0} /* длинные команды в <pre> скроллятся внутри, а не раздвигают колонку */
   .g4{grid-template-columns:repeat(4,1fr)}
   .g3{grid-template-columns:repeat(3,1fr)}
   .g2{grid-template-columns:repeat(2,1fr)}
@@ -154,9 +152,11 @@
   .steps li{counter-increment:s;display:grid;grid-template-columns:44px 1fr;gap:14px;align-items:start;background:var(--card);border:2.5px solid var(--line);border-radius:18px;padding:16px;box-shadow:var(--shadow)}
   .steps li::before{content:counter(s);width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--green);color:#fff;font-weight:900;font-size:20px;border:2px solid var(--line)}
   .steps p{margin:2px 0 0;color:var(--muted);font-size:16px}
+  .steps p+p{margin-top:8px}
+  .steps b{color:var(--ink)}
   pre{background:#1f2a22;color:#d9f5c8;border-radius:12px;padding:12px 14px;margin:10px 0 0;font-size:14px;overflow-x:auto;border:2px solid var(--line)}
   pre .p{color:#7fd394;user-select:none}
-  .copy{float:right;margin:-4px -6px 0 8px;font:700 12px Nunito,sans-serif;background:#ffffff1a;color:#d9f5c8;border:1px solid #ffffff33;border-radius:8px;padding:3px 9px;cursor:pointer}
+  .copy{display:block;margin:-2px -4px 8px auto;font:700 12px ui-rounded,system-ui,-apple-system,sans-serif;background:#ffffff1a;color:#d9f5c8;border:1px solid #ffffff33;border-radius:8px;padding:3px 9px;cursor:pointer}
   details{background:var(--card);border:2.5px solid var(--line);border-radius:16px;padding:0 18px;box-shadow:var(--shadow);margin-bottom:12px}
   summary{cursor:pointer;font-weight:800;padding:15px 0;list-style:none;display:flex;justify-content:space-between;gap:12px}
   summary::-webkit-details-marker{display:none}
@@ -203,7 +203,7 @@
         <a class="btn primary" href="https://github.com/vraiuk/princess-dragon/releases"><span aria-hidden="true">⬇️</span><span class="t">Скачать для macOS<small>Apple Silicon и Intel · .dmg</small></span></a>
         <a class="btn" href="app/renderer/index.html"><span aria-hidden="true">🌐</span><span class="t">Попробовать в браузере<small>демо с перемоткой времени</small></span></a>
       </div>
-      <div class="badges"><span>💧 вода каждые 45 мин</span><span>🤸 разминка 50/10</span><span>🏆 40 ачивок</span><span>🔒 всё локально</span></div>
+      <div class="badges"><span>💧 вода каждые 45 мин</span><span>🤸 разминка каждые 50 мин</span><span>🏆 40 ачивок</span><span>🔒 всё локально</span></div>
     </div>
     <div class="stage">
       <div class="bubble">Я живая, потыкай меня 👉</div>
@@ -297,28 +297,34 @@
     <p class="sub">Интервалы взяты из обычных рекомендаций для офисной работы. Всё меняется в настройках.</p>
     <div class="timing">
       <div class="card"><div class="num">45<small>мин</small></div><div class="meter"><i style="width:75%"></i></div><h3>Стакан воды</h3><p>Около 6 стаканов за 8-часовой день плюс утренний — жаба напомнит при первом включении Mac утром.</p></div>
-      <div class="card"><div class="num">50/10</div><div class="meter m"><i style="width:100%"></i></div><h3>Движение</h3><p>Долгое непрерывное сидение вредно, а короткие перерывы каждый час его компенсируют. Встань, пройдись, присядь.</p></div>
-      <div class="card"><div class="num">5<small>мин без мыши</small></div><div class="meter b"><i style="width:100%"></i></div><h3>= перерыв</h3><p>Отошёл на кухню — засчитано. Короткий простой (читаешь код, думаешь) перерывом не считается.</p></div>
+      <div class="card"><div class="num">50<small>мин</small></div><div class="meter m"><i style="width:100%"></i></div><h3>Движение</h3><p>Долгое непрерывное сидение вредно, а короткие перерывы каждый час его компенсируют. Встань хотя бы на 5 минут (лучше на 10): пройдись, присядь.</p></div>
+      <div class="card"><div class="num">5<small>мин без мыши</small></div><div class="meter b"><i style="width:100%"></i></div><h3>= перерыв</h3><p>Сходить на кухню — уже перерыв. Короткий простой (читаешь код, думаешь) перерывом не считается.</p></div>
     </div>
-    <p class="fine">Закрытая крышка дольше 5 минут тоже считается перерывом. После сна дольше 2 часов жаба сразу попросит воды. Есть пауза для созвонов — жаба не будет квакать на демо у директора.</p>
+    <p class="fine">Закрытая крышка дольше 5 минут тоже считается перерывом. После сна дольше 2 часов стакан почти пуст, и жаба попросит воды в ближайшие минуты, а утром ещё и поздоровается. Есть пауза для созвонов — жаба не будет квакать на демо у директора.</p>
   </div>
 </section>
 
 <section id="install" class="alt">
   <div class="wrap">
     <div class="kicker">установка</div>
-    <h2>Три шага до жабы</h2>
+    <h2>Четыре шага до жабы</h2>
     <div class="grid g2" style="align-items:start">
       <ol class="steps">
-        <li><div><h3>Скачай .dmg</h3><p>Файл <code>Zhabka-…-universal.dmg</code> в <a href="https://github.com/vraiuk/princess-dragon/releases">Releases на GitHub</a>. Работает на Apple Silicon и Intel.</p></div></li>
-        <li><div><h3>Перетащи в «Программы»</h3><p>Открой dmg и перетащи Zhabka в папку Applications.</p></div></li>
-        <li><div><h3>Первый запуск</h3><p>Правый клик → «Открыть» → «Открыть». Жаба появится в правом нижнем углу, 🐸 — в меню-баре, а онбординг спросит про хардкор.</p></div></li>
+        <li><div><h3>Скачай .dmg</h3><p>Файл <code>Zhabka-…-universal.dmg</code> в <a href="https://github.com/vraiuk/princess-dragon/releases">Releases на GitHub</a>. macOS 12 и новее, Apple Silicon и Intel.</p></div></li>
+        <li><div><h3>Перетащи в «Программы»</h3><p>Открой dmg, перетащи Zhabka в папку Applications / Программы и запускай только оттуда, не из окна dmg и не из «Загрузок»: иначе не сработает автозапуск. Потом извлеки диск Zhabka в Finder. Если всё же запустишь не оттуда, Жабка сама предложит переместиться в «Программы».</p></div></li>
+        <li><div><h3>Разреши первый запуск</h3><p>Приложение не подписано платным сертификатом Apple, поэтому первый запуск macOS заблокирует.</p>
+          <p><b>macOS 15 Sequoia и новее:</b> дважды кликни Жабку → в окне «Zhabka не открыто» нажми «Готово» → Системные настройки → Конфиденциальность и безопасность → внизу «Программа Zhabka заблокирована…» → «Всё равно открыть» → пароль → «Открыть». Правый клик → «Открыть» на Sequoia больше не помогает.</p>
+          <p><b>macOS 14 Sonoma и старше:</b> правый клик по Жабке → «Открыть» → «Открыть».</p>
+          <p>Или одной командой в Терминале — см. блок «Запуск через Терминал».</p></div></li>
+        <li><div><h3>Ищи жабу в углу и 🐸 в меню-баре</h3><p>Иконки в Dock нет, так и задумано: жаба появится в правом нижнем углу, а управление живёт в 🐸 в меню-баре справа вверху (не видно — меню-бар переполнен, освободи место). Онбординг спросит про хардкор. Разреши уведомления, когда macOS спросит. Сообщение «Добавлены объекты для входа» — это автозапуск Жабки, он выключается в её настройках.</p></div></li>
       </ol>
       <div>
         <details open>
-          <summary>macOS пишет «Приложение повреждено» или «не удаётся проверить разработчика»</summary>
-          <p>Это Gatekeeper: приложение не подписано платным сертификатом Apple. Оно не повреждено. Сними карантинный флаг в Терминале и запусти снова:</p>
-          <pre><button class="copy" type="button" data-copy="xattr -cr /Applications/Zhabka.app">копировать</button><span class="p">$ </span>xattr -cr /Applications/Zhabka.app</pre>
+          <summary>Запуск через Терминал и «Приложение повреждено»</summary>
+          <p>macOS ставит на всё скачанное из интернета флаг карантина <code>com.apple.quarantine</code>. По этому флагу Gatekeeper проверяет подпись Apple, а у Жабки её нет (сертификат разработчика платный), поэтому macOS пишет «не удаётся проверить разработчика» или даже «повреждено». Команда снимает флаг только с Жабки и запускает её:</p>
+          <pre><button class="copy" type="button" data-copy="xattr -dr com.apple.quarantine /Applications/Zhabka.app &amp;&amp; open /Applications/Zhabka.app">копировать</button><span class="p">$ </span>xattr -dr com.apple.quarantine /Applications/Zhabka.app
+<span class="p">$ </span>open /Applications/Zhabka.app</pre>
+          <p><b>Чем это безопасно и чем нет.</b> Команда ничего не ломает и не трогает другие приложения, она лишь отключает проверку Apple для одной Жабки. Поэтому делай так только с dmg из <a href="https://github.com/vraiuk/princess-dragon/releases">Releases этого репозитория</a>: его собирает GitHub Actions из <a href="https://github.com/vraiuk/princess-dragon/tree/main/frog-pet">открытого кода</a>. Не снимай карантин с приложений из неизвестных источников: для них «повреждено» может быть правдой.</p>
         </details>
         <details>
           <summary>Жаба мешает кликать по окнам под ней?</summary>
@@ -349,7 +355,7 @@
         <h2 style="font-size:clamp(26px,3.6vw,36px)">Всё остаётся на твоём Mac</h2>
         <ul>
           <li>Жаба не читает, что ты печатаешь: она знает только, был ли ввод в последние минуты.</li>
-          <li>Никакой аналитики, аккаунтов и серверов. Ничего никуда не отправляется.</li>
+          <li>Никакой аналитики, аккаунтов и серверов: приложение ничего никуда не отправляет. Этот сайт тоже: без счётчиков и сторонних шрифтов.</li>
           <li>Статистика и ачивки лежат в одном файле: <code>~/Library/Application Support/Zhabka/frog.json</code>.</li>
           <li>Код открыт на <a href="https://github.com/vraiuk/princess-dragon/tree/main/frog-pet">GitHub</a>.</li>
         </ul>
@@ -361,7 +367,7 @@
 <section class="cta alt">
   <div class="wrap">
     <h2>Попей воды. Жаба смотрит.</h2>
-    <p class="sub" style="margin:0 auto">Пока ты читал эту страницу, стакан стал немного пустее.</p>
+    <p class="sub" style="margin:0 auto">Пока ты читаешь эту страницу, стакан становится немного пустее.</p>
     <div class="btns">
       <a class="btn primary" href="https://github.com/vraiuk/princess-dragon/releases"><span aria-hidden="true">⬇️</span><span class="t">Скачать для macOS<small>бесплатно, открытый код</small></span></a>
       <a class="btn" href="app/renderer/index.html"><span aria-hidden="true">🌐</span><span class="t">Попробовать в браузере<small>без установки</small></span></a>
