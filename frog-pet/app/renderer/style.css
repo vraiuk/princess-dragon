@@ -20,8 +20,9 @@ html, body {
   content: ""; position: absolute; left: 50%; bottom: -9px; width: 16px; height: 16px; margin-left: -8px;
   background: #fffdf5; transform: rotate(45deg); box-shadow: 1.5px 1.5px 0 0 #1d3b26;
 }
-#bubble.hidden { opacity: 0; transform: scale(.6) translateY(10px); pointer-events: none; }
-#bubble .txt { font-weight: 600; }
+#bubble.under-toast { animation: none; opacity: 0; transform: scale(.9) translateY(14px); pointer-events: none; }
+#bubble.hidden { animation: none; opacity: 0; transform: scale(.6) translateY(10px); pointer-events: none; }
+#bubble .txt { font-weight: 650; font-size: 13.5px; letter-spacing: -.005em; text-wrap: pretty; }
 #bubble .tip { margin-top: 4px; font-size: 12px; color: #4b5a4f; }
 #bubble .tip:empty, #bubble .btns:empty { display: none; }
 #bubble .btns { display: flex; gap: 6px; margin-top: 8px; position: relative; z-index: 1; }
@@ -32,10 +33,41 @@ html, body {
 #bubble button.main { background: #3fae5a; color: #fff; }
 #bubble button:hover { filter: brightness(1.06); }
 #bubble.water button.main { background: #2f8de4; }
+#bubble button:active { transform: scale(.96); }
+
+/* при смерти — тревожное облачко */
+#bubble.crit {
+  background: #fff4f2; color: #4a1018;
+  box-shadow: 0 4px 18px rgba(220,40,50,.45), 0 0 0 2px #c8283a;
+  animation: critShake 1.6s ease-in-out infinite;
+}
+#bubble.crit::after { background: #fff4f2; box-shadow: 2px 2px 0 0 #c8283a; }
+#bubble.crit .tip { color: #8a2a36; }
+#bubble.crit button.main { background: #d7303f; }
+@keyframes critShake {
+  0%, 60%, 100% { transform: none; }
+  64% { transform: translateX(-2px) rotate(-.6deg); } 68% { transform: translateX(2px) rotate(.6deg); }
+  72% { transform: translateX(-1.5px); } 76% { transform: translateX(1px); }
+}
+
+/* у надгробия — спокойное серое облачко с большой кнопкой */
+#bubble.dead { background: #f4f4ef; box-shadow: 0 4px 14px rgba(0,0,0,.28), 0 0 0 1.5px #3c423d; text-align: center; }
+#bubble.dead::after { background: #f4f4ef; box-shadow: 1.5px 1.5px 0 0 #3c423d; }
+#bubble.dead .txt { font-style: italic; }
+#bubble.dead .tip { color: #5a605a; font-size: 11.5px; }
+#bubble.dead button.main {
+  background: linear-gradient(180deg, #ffe58a, #f5c542); color: #4a3500; font-size: 13.5px; padding: 7px 10px;
+  box-shadow: 0 2px 0 #c99a1a; animation: eggBtn 2.4s ease-in-out infinite;
+}
+@keyframes eggBtn { 0%, 80%, 100% { transform: none; } 85% { transform: rotate(-3deg); } 90% { transform: rotate(3deg); } 95% { transform: rotate(-1.5deg); } }
+
+/* фолбэк ачивки без toast.js */
+#bubble.ach { background: #fffbe8; box-shadow: 0 4px 14px rgba(0,0,0,.28), 0 0 0 2px #e0b323; }
+#bubble.ach::after { background: #fffbe8; box-shadow: 2px 2px 0 0 #e0b323; }
 
 /* ---------- кнопки сбоку (видны при наведении) ---------- */
 #side {
-  position: absolute; left: 6px; top: 206px; display: flex; flex-direction: column; gap: 8px;
+  position: absolute; left: 6px; top: 180px; display: flex; flex-direction: column; gap: 7px;
   transition: opacity .2s, transform .2s;
 }
 #side.hidden { opacity: 0; transform: translateX(-8px); pointer-events: none; }
@@ -52,5 +84,12 @@ html, body {
 .ring:hover { transform: scale(1.1); }
 .ring:active { transform: scale(.94); }
 #bMove { --c: #3fae5a; }
+.mini {
+  width: 30px; height: 30px; margin-left: 5px; border-radius: 50%; border: 0; padding: 0; cursor: pointer; font-size: 15px;
+  display: grid; place-items: center; background: #fffdf5;
+  box-shadow: 0 3px 8px rgba(0,0,0,.3), 0 0 0 1.5px #1d3b26; transition: transform .15s;
+}
+.mini:hover { transform: scale(1.12) rotate(-6deg); }
+.mini:active { transform: scale(.94); }
 .ring.alert { animation: pulse 1.2s ease-in-out infinite; }
 @keyframes pulse { 50% { transform: scale(1.12); box-shadow: 0 3px 14px rgba(255,90,60,.7), 0 0 0 1.5px #1d3b26; } }

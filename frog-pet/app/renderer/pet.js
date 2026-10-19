@@ -18,6 +18,8 @@
   const $side = document.getElementById('side');
   const $bDrink = document.getElementById('bDrink');
   const $bMove = document.getElementById('bMove');
+  const $bTrophy = document.getElementById('bTrophy');
+  const Death = window.FrogDeath || null;
 
   // ---------- состояние ----------
   let view = { glass: 1, dry: 0, stone: 0, activity: 'coding', needs: {}, day: {}, paused: false, waterLeftMin: 45, moveLeftMin: 50, sitMin: 0 };
@@ -32,6 +34,10 @@
   let glyphTimer = 0, zTimer = 0, bubbleTimer = null, bubbleKind = null;
   let hover = false, hoverOff = 0, ignoring = true;
   let first = true;
+  let fx = null;                                    // что FrogDeath делает с жабой в этом кадре
+  let lifeMismatch = 0, syncNow = false;            // рассинхрон view.life и анимации смерти
+  let awaitView = 0;                                // после filmEnd ждём свежий view
+  let debugPatch = null;                            // __frogDebug.view(patch)
 
   // ---------- утилиты ----------
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -109,20 +115,102 @@
       el.addEventListener('click', (e) => { e.stopPropagation(); hideBubble(); b.do(); });
       btns.appendChild(el);
     });
-    $bubble.className = opts.kind || '';
+    const t = document.getElementById('toast');
+    $bubble.className = (opts.kind || '') + (t && t.classList.contains('show') ? ' under-toast' : '');
     bubbleKind = opts.kind || null;
-    bubbleTimer = setTimeout(hideBubble, opts.ttl || 6000);
+    if (opts.ttl !== Infinity) bubbleTimer = setTimeout(hideBubble, opts.ttl || 6000);
   }
   function hideBubble() {
     clearTimeout(bubbleTimer);
     $bubble.classList.add('hidden');
     bubbleKind = null;
+    // у надгробия облачко с кнопкой возвращается само
+    if (isDead()) bubbleTimer = setTimeout(() => { if (Death && Death.mode === 'dead' && !bubbleKind) showRip(); }, 2500);
+  }
+
+  // ---------- смерть ----------
+  const alive = () => !Death || Death.mode === 'none';
+  const isDead = () => !!Death && Death.isDead();
+  const EPITAPH = {
+    stone: ['Сидела, пока не стала памятником.', 'Теперь она — часть интерьера.', 'Окаменела за код-ревью. Без перерыва.'],
+    dry: ['Засохла в изюм. Вода была в метре.', 'Ушла в пустыню. Стакан стоял рядом.', 'Была жабой, стала изюмом.'],
+  };
+  function showRip() {
+    const inf = (Death && Death.info()) || {};
+    const cause = inf.cause === 'dry' ? 'dry' : 'stone';
+    const text = inf.text || EPITAPH[cause][(inf.generation || 1) % 3];
+    // причина и срок жизни уже выбиты на надгробии — в облачке только эпитафия и кнопка
+    say(text, { kind: 'dead', ttl: Infinity,
+      buttons: [{ label: '🥚 Новая жаба', main: true, do: () => bridge.action('revive') }] });
+  }
+  const deathInfo = (src) => ({ generation: src.generation || view.generation || 1, ageMin: src.ageMin != null ? src.ageMin : view.ageMin, text: src.text });
+  function startDeath(ev) {
+    if (!Death) return;
+    for (const k of Object.keys(anim)) delete anim[k];
+    particles = particles.filter((p) => p.kind === 'chunk');
+    hideBubble();
+    lifeMismatch = 0;
+    Death.die(ev.cause || view.cause || 'stone', deathInfo(ev));
+  }
+  function startReborn(ev) {
+    if (!Death) return;
+    hideBubble();
+    lifeMismatch = 0;
+    sm.dry = 0; sm.stone = 0; sm.glass = 1;
+    Death.reborn({ generation: ev.generation || view.generation, text: ev.text });
+  }
+  // если view.life не совпадает с тем, что рисуется (старт, сброс, конец съёмки) — подстроиться без анимации
+  function syncLife(dt) {
+    if (!Death) return;
+    if (awaitView) { if (performance.now() - awaitView < 1500) return; awaitView = 0; syncNow = true; }
+    const want = view.life === 'dead';
+    const m = Death.mode;
+    const bad = (want && (m === 'none' || m === 'hatching')) || (!want && (m === 'dead' || m === 'dying'));
+    if (!bad) { lifeMismatch = 0; syncNow = false; return; }
+    lifeMismatch += dt;
+    if (!syncNow && lifeMismatch < 0.7) return;   // ждём событие death/reborn, оно может прийти чуть позже view
+    syncNow = false; lifeMismatch = 0;
+    particles = [];
+    if (want) { hideBubble(); Death.setDead(view.cause, deathInfo(view)); showRip(); }
+    else { Death.reset(); hideBubble(); sm.dry = view.dry || 0; sm.stone = view.stone || 0; }
   }
 
   // ---------- события из main ----------
   function onEvent(ev) {
     const now = performance.now() / 1000;
+    if (!ev || !ev.type) return;
+    // пока жаба мертва, обычные реплики не мешают надгробию
+    if (isDead() && ['remind', 'drink', 'stretch', 'back', 'poke', 'morning', 'critical'].includes(ev.type)) {
+      if (ev.type === 'morning' && Death.mode === 'dead') showRip();
+      return;
+    }
     switch (ev.type) {
+      case 'death':
+        startDeath(ev);
+        break;
+      case 'reborn':
+        startReborn(ev);
+        break;
+      case 'filmEnd':
+        // конец съёмки: сбросить анимации и подстроиться под следующий настоящий view без анимаций
+        if (Death) Death.reset();
+        hideBubble();
+        awaitView = performance.now();
+        break;
+      case 'achievement':
+        if (window.FrogToast && FrogToast.show) FrogToast.show(ev);
+        else say(`${ev.icon || '🏆'} ${ev.title || 'Ачивка!'}`, { tip: ev.desc, kind: ev.kind === 'bad' ? 'crit' : 'ach', ttl: 5000 });
+        break;
+      case 'critical':
+        anim.alert = { t0: now, dur: 2 };
+        croak(0.22);
+        say(ev.text || (ev.kind === 'water' ? 'Я при смерти! ВОДЫ! 🥵' : 'Я почти камень! ВСТАНЬ! 🗿'), {
+          kind: 'crit', ttl: 90000, tip: ev.kind === 'water' ? 'Ещё немного — и я изюм.' : 'Ещё немного — и я памятник.',
+          buttons: ev.kind === 'water'
+            ? [{ label: 'Попил 💧', main: true, do: () => bridge.action('drink') }]
+            : [{ label: 'Размялся 🤸', main: true, do: () => bridge.action('stretch') }],
+        });
+        break;
       case 'remind':
         anim.alert = { t0: now, dur: 1.4 };
         croak();
@@ -201,10 +289,31 @@
       rot = Math.sin(p * Math.PI * 7) * 0.06 * (1 - p);
       dy -= Math.abs(Math.sin(p * Math.PI * 3.5)) * 10 * (1 - p);
     }
-    g.translate(130, FLOOR + OY + dy);
-    g.rotate(rot);
+    // дрожь: при смерти (critical) и во время гибели
+    let shake = fx && fx.shake ? fx.shake : 0;
+    const cr = critLevel();
+    if (cr > 0) shake = Math.max(shake, (Math.sin(t * 9) > 0.55 ? 1.6 : 0.5) * cr);
+    const jx = shake ? rnd(-shake, shake) : 0;
+    const jr = shake ? rnd(-shake, shake) * 0.004 : 0;
+    g.translate(130 + jx, FLOOR + OY + dy);
+    g.rotate(rot + jr);
     g.scale(sx, sy);
     g.translate(-130, -FLOOR);
+    if (fx && fx.scale != null) {
+      g.translate(fx.ax, fx.ay);
+      g.scale(fx.scale * (fx.sx || 1), fx.scale);
+      g.translate(-fx.ax, -fx.ay);
+    }
+  }
+
+  // 0..1 — насколько жаба «при смерти»
+  function critLevel() {
+    if (!alive() || !view.critical) return 0;
+    const c = view.critical, d = view.doom || {};
+    let k = 0;
+    if (c.water) k = Math.max(k, 0.6 + 0.4 * clamp(((d.water || 0.8) - 0.8) / 0.2, 0, 1));
+    if (c.move) k = Math.max(k, 0.6 + 0.4 * clamp(((d.move || 0.8) - 0.8) / 0.2, 0, 1));
+    return k;
   }
 
   function colors() {
@@ -262,11 +371,15 @@
     ell(g, 186, 150, 4, 3, 0.2); g.fill();
     g.globalAlpha = 1;
 
-    // наушники: дуга за глазами
-    g.strokeStyle = '#1f2330'; g.lineWidth = 9;
-    g.beginPath(); g.arc(130, 152, 76, Math.PI * 1.06, Math.PI * 1.94); g.stroke();
-    g.strokeStyle = '#4a5268'; g.lineWidth = 3;
-    g.beginPath(); g.arc(130, 152, 76, Math.PI * 1.12, Math.PI * 1.88); g.stroke();
+    // наушники: дуга за глазами (при вылуплении падают сверху)
+    const phones = !(fx && fx.hidePhones);
+    const pdy = fx && fx.phonesDY ? fx.phonesDY : 0;
+    if (phones) {
+      g.strokeStyle = '#1f2330'; g.lineWidth = 9;
+      g.beginPath(); g.arc(130, 152 + pdy, 76, Math.PI * 1.06, Math.PI * 1.94); g.stroke();
+      g.strokeStyle = '#4a5268'; g.lineWidth = 3;
+      g.beginPath(); g.arc(130, 152 + pdy, 76, Math.PI * 1.12, Math.PI * 1.88); g.stroke();
+    }
 
     // глаза
     const sleeping = view.activity === 'away';
@@ -278,13 +391,13 @@
 
     // наушники: чашки поверх
     const led = view.paused ? '#ff5d5d' : view.activity === 'coding' ? '#6ee7b7' : '#8aa0ff';
-    for (const [x, dir] of [[62, -1], [198, 1]]) {
+    for (const [x, dir] of phones ? [[62, -1], [198, 1]] : []) {
       g.fillStyle = '#1f2330';
-      rr(g, x - 9, 132, 18, 38, 8); g.fill();
+      rr(g, x - 9, 132 + pdy, 18, 38, 8); g.fill();
       g.fillStyle = '#343b50';
-      rr(g, x - 5 - dir * 2, 136, 10, 30, 5); g.fill();
+      rr(g, x - 5 - dir * 2, 136 + pdy, 10, 30, 5); g.fill();
       g.fillStyle = led;
-      g.beginPath(); g.arc(x + dir * 4, 141, 2.2, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(x + dir * 4, 141 + pdy, 2.2, 0, Math.PI * 2); g.fill();
     }
 
     // ноздри
@@ -319,6 +432,23 @@
     }
 
     applyStone(g, t);
+    applyCrit(g, t);
+    if (Death) Death.decorate(g, t, 'back');
+    g.restore();
+  }
+
+  // красноватый тревожный отлив «при смерти», пульсирует как сердцебиение
+  function heartbeat(t) { const p = (t * 1.25) % 1; return Math.max(Math.exp(-Math.pow((p - 0.08) / 0.05, 2)), 0.7 * Math.exp(-Math.pow((p - 0.28) / 0.05, 2))); }
+  function applyCrit(g, t) {
+    const cr = critLevel();
+    if (!cr) return;
+    g.save();
+    g.globalCompositeOperation = 'source-atop';
+    const gr = g.createRadialGradient(130, 160, 30, 130, 160, 120);
+    gr.addColorStop(0, `rgba(255,40,40,${0.04 * cr})`);
+    gr.addColorStop(1, `rgba(255,30,50,${(0.22 + 0.22 * heartbeat(t)) * cr})`);
+    g.fillStyle = gr;
+    g.fillRect(0, 0, W, H);
     g.restore();
   }
 
@@ -358,7 +488,7 @@
 
   function drawMouth(g, t, C) {
     g.strokeStyle = C.line; g.lineWidth = 3; g.lineCap = 'round';
-    const happy = anim.drink || anim.jump || anim.squish;
+    const happy = anim.drink || anim.jump || anim.squish || (fx && fx.happy);
     if (view.activity === 'away') {
       g.fillStyle = C.line;
       ell(g, 130, 163, 4, 3 + Math.sin(t * 1.3)); g.fill();
@@ -488,6 +618,8 @@
       for (const fx of [-8, 0, 8]) { g.beginPath(); g.arc(x + fx - 1.5, y - 1, 1.4, 0, Math.PI * 2); g.fill(); }
     }
     applyStone(g, t);
+    applyCrit(g, t);
+    if (Death) Death.decorate(g, t, 'front');
     g.restore();
   }
 
@@ -495,7 +627,7 @@
     g.save();
     g.translate(0, OY);
     // свечение экрана из-за крышки
-    if (view.activity !== 'away') {
+    if (view.activity !== 'away' && alive()) {
       const gr = g.createRadialGradient(130, 196, 4, 130, 196, 70);
       gr.addColorStop(0, 'rgba(140,215,255,0.45)');
       gr.addColorStop(1, 'rgba(140,215,255,0)');
@@ -580,7 +712,7 @@
 
   function drawEffects(g, t, dt) {
     // жар над пересохшей жабой
-    if (sm.dry > 0.5) {
+    if (sm.dry > 0.5 && (alive() || (fx && fx.show && (fx.scale == null || fx.scale > 0.7)))) {
       g.save();
       g.strokeStyle = `rgba(255,170,60,${(sm.dry - 0.5) * 0.9})`;
       g.lineWidth = 2; g.lineCap = 'round';
@@ -595,8 +727,33 @@
       g.restore();
     }
 
+    // «при смерти»: тревожный значок с пульсирующими кольцами
+    const cr = critLevel();
+    if (cr && !bubbleKind) {
+      const hb = heartbeat(t);
+      const x = 130, y = 66 + OY + Math.sin(t * 3) * 2;
+      g.save();
+      for (const ph of [0, 0.5]) {
+        const k = (t * 0.9 + ph) % 1;
+        g.strokeStyle = `rgba(255,60,60,${0.7 * (1 - k)})`; g.lineWidth = 2.5 * (1 - k) + 0.5;
+        ell(g, x, y, 14 + k * 22, 14 + k * 22); g.stroke();
+      }
+      const r = 13 + hb * 3;
+      g.fillStyle = '#e8343f'; g.strokeStyle = '#fff'; g.lineWidth = 2.5;
+      ell(g, x, y, r, r); g.fill(); g.stroke();
+      g.fillStyle = '#fff'; g.font = 'bold 18px -apple-system, "Helvetica Neue", sans-serif';
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText('!', x, y + 1);
+      const icon = view.critical.water && view.critical.move ? '🥵🗿' : view.critical.water ? '🥵' : '🗿';
+      g.font = '15px "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
+      g.fillText(icon, x + 30, y + 2);
+      g.restore();
+    }
+    // капли пота от ужаса
+    if (cr && Math.random() < 0.06) particles.push({ kind: 'drop', x: rnd(80, 180), y: rnd(110, 140) + OY, vx: rnd(-0.6, 0.6), vy: rnd(-1.5, 0), size: rnd(1.6, 2.6), life: 0, max: 0.7 });
+
     // значок нужды над головой
-    if (!bubbleKind && (view.needs.water || view.needs.move) && view.activity !== 'away') {
+    if (!cr && alive() && !bubbleKind && (view.needs.water || view.needs.move) && view.activity !== 'away') {
       const icon = view.needs.water && view.needs.move ? '💧🗿' : view.needs.water ? '💧' : '🗿';
       g.save();
       g.globalAlpha = 0.85 + 0.15 * Math.sin(t * 4);
@@ -665,7 +822,7 @@
     const t = performance.now() / 1000;
     const dt = Math.min(0.1, t - lastT);
     // ~30 fps; во сне — ещё реже, чтобы не жечь батарею
-    const step = view.activity === 'away' && !Object.keys(anim).length ? 1 / 12 : 1 / 30;
+    const step = view.activity === 'away' && !Object.keys(anim).length && alive() && !critLevel() ? 1 / 12 : 1 / 30;
     acc += dt; lastT = t;
     if (acc < step) return;
     const fdt = acc; acc = 0;
@@ -676,11 +833,14 @@
   function update(t, dt) {
     for (const k of Object.keys(anim)) if (t - anim[k].t0 > anim[k].dur) delete anim[k];
 
+    syncLife(dt);
+    fx = Death ? Death.frogFx(t) : null;
     const fast = anim.jump || anim.drink;
     const rate = first ? 1 : 1 - Math.exp(-dt * (fast ? 2.2 : 0.9));
     first = false;
-    sm.dry = lerp(sm.dry, view.dry, anim.drink ? rate * 0.6 : rate);
-    sm.stone = lerp(sm.stone, view.stone, rate);
+    const r2 = 1 - Math.exp(-dt * 4);
+    sm.dry = fx && fx.dry != null ? lerp(sm.dry, fx.dry, r2) : lerp(sm.dry, view.dry || 0, anim.drink ? rate * 0.6 : rate);
+    sm.stone = fx && fx.stone != null ? lerp(sm.stone, fx.stone, r2) : lerp(sm.stone, view.stone || 0, rate);
     sm.glass = lerp(sm.glass, anim.drink && t - anim.drink.t0 < 0.9 ? Math.max(0, sm.glass - 0.02) : view.glass, rate);
 
     // моргание
@@ -704,7 +864,7 @@
     }
 
     // частицы-эмиттеры
-    if (view.activity === 'coding' && sm.stone < 0.85 && !anim.jump) {
+    if (view.activity === 'coding' && sm.stone < 0.85 && !anim.jump && alive()) {
       if ((glyphTimer -= dt) <= 0) {
         glyphTimer = rnd(0.5, 1.1);
         const glyphs = ['{ }', '</>', ';', '=>', '()', '[]', '&&', '!=', 'fn', '01', '++', '#', '$', '//', '?.'];
@@ -712,7 +872,7 @@
         particles.push({ kind: 'glyph', x: Math.random() < 0.5 ? rnd(66, 86) : rnd(174, 194), y: 200 + OY, text: glyphs[Math.floor(Math.random() * glyphs.length)], color: cols[Math.floor(Math.random() * cols.length)], size: rnd(9, 12), life: 0, max: rnd(1.6, 2.4), ph: rnd(0, 6) });
       }
     }
-    if (view.activity === 'away' && (zTimer -= dt) <= 0) {
+    if (view.activity === 'away' && alive() && (zTimer -= dt) <= 0) {
       zTimer = 1.3;
       particles.push({ kind: 'z', x: 168, y: 96 + OY, size: rnd(12, 18), life: 0, max: 2.6 });
     }
@@ -732,18 +892,41 @@
 
   function render(t, dt) {
     const C = colors();
-    drawBack(bctx, t, C);
-    drawFront(fctx, t, C);
+    const showFrog = !fx || fx.show;
+    if (showFrog) {
+      drawBack(bctx, t, C);
+      drawFront(fctx, t, C);
+    }
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, cv.width, cv.height);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // красное тревожное свечение за жабой
+    const cr = critLevel();
+    if (cr) {
+      const a = (0.25 + 0.35 * heartbeat(t)) * cr;
+      const gr = ctx.createRadialGradient(130, 150 + OY, 20, 130, 150 + OY, 125);
+      gr.addColorStop(0, `rgba(255,50,50,${a})`); gr.addColorStop(0.6, `rgba(255,40,60,${a * 0.4})`); gr.addColorStop(1, 'rgba(255,40,60,0)');
+      ctx.fillStyle = gr;
+      ctx.fillRect(0, 0, W, H);
+    }
     // тень на столе
     ctx.fillStyle = 'rgba(0,0,0,0.22)';
     ell(ctx, 136, FLOOR + OY + 2, 106, 9); ctx.fill();
-    ctx.drawImage(back, 0, 0, W, H);
+    if (Death) Death.drawBehind(ctx, t, dt);
+    const fa = fx && fx.alpha != null ? fx.alpha : 1;
+    if (showFrog && fa > 0) {
+      ctx.globalAlpha = fa;
+      ctx.drawImage(back, 0, 0, W, H);
+      ctx.globalAlpha = 1;
+    }
     drawLaptop(ctx, t);
-    ctx.drawImage(front, 0, 0, W, H);
+    if (showFrog && fa > 0) {
+      ctx.globalAlpha = fa;
+      ctx.drawImage(front, 0, 0, W, H);
+      ctx.globalAlpha = 1;
+    }
     drawGlass(ctx, t);
+    if (Death) Death.drawFront(ctx, t, dt);
     drawEffects(ctx, t, dt);
     updateSide();
   }
@@ -751,7 +934,11 @@
   // ---------- кнопки сбоку ----------
   let sideStamp = '';
   function updateSide() {
-    const stamp = [view.waterLeftMin, view.moveLeftMin, view.needs.water, view.needs.move, hover].join();
+    // пока висит тост ачивки, облачко прячется под него и возвращается после
+    const toast = document.getElementById('toast');
+    $bubble.classList.toggle('under-toast', !!(toast && toast.classList.contains('show')));
+    const dead = !alive();
+    const stamp = [view.waterLeftMin, view.moveLeftMin, view.needs.water, view.needs.move, hover, dead].join();
     if (stamp === sideStamp) return;
     sideStamp = stamp;
     $bDrink.style.setProperty('--p', clamp(view.glass, 0, 1).toFixed(3));
@@ -760,17 +947,18 @@
     $bMove.title = view.needs.move ? `Сидишь ${view.sitMin} мин — встань!` : `Размялся (разминка через ${view.moveLeftMin} мин)`;
     $bDrink.classList.toggle('alert', !!view.needs.water);
     $bMove.classList.toggle('alert', !!view.needs.move);
-    $side.classList.toggle('hidden', !hover);
+    $side.classList.toggle('hidden', !hover || dead);
   }
   $bDrink.addEventListener('click', () => bridge.action('drink'));
   $bMove.addEventListener('click', () => bridge.action('stretch'));
+  if ($bTrophy) $bTrophy.addEventListener('click', () => bridge.action('openTrophies'));
 
   // ---------- мышь: прозрачные места пропускают клики ----------
   function isHit(x, y) {
     if (x < 0 || y < 0 || x >= W || y >= H) return false;
     const r = $pet.getBoundingClientRect();
     const el = document.elementFromPoint(r.left + x, r.top + y);
-    if (el && el !== cv && el.closest('#bubble:not(.hidden), #side:not(.hidden)')) return true;
+    if (el && el !== cv && el.closest('#bubble:not(.hidden), #side:not(.hidden), #toast.show')) return true;
     const px = ctx.getImageData(Math.floor(x * dpr), Math.floor(y * dpr), 1, 1).data;
     if (px[3] > 24) return true;
     // вся зона жабы целиком, чтобы не мигало между пикселями
@@ -787,7 +975,7 @@
 
   function trackPointer(x, y) {
     cursor.x = x; cursor.y = y; cursor.t = performance.now();
-    setHover(isHit(x, y) || (hover && x > 0 && x < 70 && y > 190 && y < 310));
+    setHover(isHit(x, y) || (hover && x > 0 && x < 70 && y > 170 && y < 312));
   }
 
   const local = (e) => { const r = $pet.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
@@ -810,7 +998,8 @@
     const d = drag; drag = null;
     cv.classList.remove('dragging');
     if (d.moved) bridge.dragEnd();
-    else bridge.action('poke');
+    else if (Death && Death.mode === 'dead') { Death.poke(); if (!bubbleKind) showRip(); }
+    else if (alive()) bridge.action('poke');
     trackPointer(...local(e));
   });
   cv.addEventListener('pointercancel', () => {
@@ -824,12 +1013,34 @@
   bridge.onCursor((p) => { if (!drag) trackPointer(p.x, p.y); });
 
   // ---------- старт ----------
-  bridge.onView((v) => { view = v; });
+  const setView = (v) => {
+    view = Object.assign({ needs: {}, day: {} }, v || {}, debugPatch || {});
+    if (awaitView) { awaitView = 0; syncNow = true; }
+  };
+  const setSettings = (s) => {
+    settings = s || settings;
+    const snd = settings.sound !== false;
+    if (window.FrogToast && FrogToast.setSound) FrogToast.setSound(snd);
+    if (Death) Death.setSound(snd);
+  };
+  if (Death) Death.init({ W, H, OY, FLOOR, back, front, getDpr: () => dpr,
+    onTomb: () => { showRip(); },
+    onHatched: (info) => { croak(); say((info && info.text) || `Ква! Я Жабка #${view.generation || 1}. Наушники на месте 🎧`, { ttl: 5000 }); },
+  });
+  bridge.onView(setView);
   bridge.onEvent(onEvent);
-  bridge.onSettings((s) => { settings = s; });
+  bridge.onSettings(setSettings);
   bridge.init().then((d) => {
-    if (d) { settings = d.settings || settings; view = d.view || view; }
+    if (d) { setSettings(d.settings); setView(d.view || view); }
+    syncNow = true;    // мёртвая на старте — сразу надгробие
     first = true;
     requestAnimationFrame(frame);
   });
+
+  // отладочный хук (и для съёмки): __frogDebug.event({type:'death', cause:'stone'}), __frogDebug.view({critical:{water:true}})
+  window.__frogDebug = {
+    event: (ev) => onEvent(ev),
+    view(patch) { debugPatch = patch ? Object.assign(debugPatch || {}, patch) : null; setView(view); },
+    state: () => ({ mode: Death ? Death.mode : 'none', life: view.life, sm: Object.assign({}, sm) }),
+  };
 })();
