@@ -7,7 +7,7 @@
   const DUR_BUSY = 2400;     // если в очереди есть ещё
   const OUT = 320;           // анимация ухода, мс
   const RIBBON = { good: 'Ачивка получена!', bad: 'Позорная ачивка', secret: 'Секретная ачивка!' };
-  const RAR = { common: 'обычная', rare: 'редкая', epic: 'эпик', legendary: 'легенда' };
+  const RAR = { common: 'обычная', rare: 'редкая', epic: 'эпическая', legendary: 'легендарная' };   // как в трофеях
   const BURST = { common: 26, rare: 40, epic: 60, legendary: 95 };
 
   let sound = true;
@@ -96,8 +96,10 @@
     secret: ['#ff6b6b', '#ffb84d', '#ffe94d', '#6bdc7a', '#4dc3ff', '#9a7bff', '#ff6bd6'],
   };
 
+  const reduced = () => !!(root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
   function burst(kind, rarity) {
-    if (!fx) return;
+    if (!fx || reduced()) return;   // reduce: без конфетти, плашка и звук остаются
     const host = fx.parentNode;
     const w = host.clientWidth || 260, h = host.clientHeight || 320;
     const dpr = root.devicePixelRatio || 1;
@@ -176,13 +178,18 @@
   }
 
   // ---------- звук ----------
-  let ac = null;
+  let ac = null, sleepTimer = 0;
   function audio() {
     const AC = root.AudioContext || root.webkitAudioContext;
     if (!AC) return null;
     if (!ac) { try { ac = new AC(); } catch (e) { return null; } }
     if (ac.state === 'suspended') ac.resume().catch(() => {});
     return ac;
+  }
+  // самый длинный звук тоста ~1.6 с; потом контекст засыпает, чтобы не держать аудиопоток весь день
+  function sleepSoon() {
+    clearTimeout(sleepTimer);
+    sleepTimer = setTimeout(() => { if (ac && ac.state === 'running') ac.suspend().catch(() => {}); }, 3000);
   }
 
   function tone(c, out, { f, f2, at, len, type = 'triangle', vol = 0.2, vib = 0 }) {
@@ -206,6 +213,7 @@
     if (!sound) return;
     const c = audio();
     if (!c) return;
+    sleepSoon();
     const t = c.currentTime + 0.05;
     const out = c.createGain();
     out.gain.value = 0.55;

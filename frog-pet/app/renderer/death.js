@@ -20,9 +20,15 @@
   const LID = 194;              // верх крышки ноутбука (координаты раскладки)
 
   // Таймлайны, секунды
-  const T_STONE = { crack: 2.0, rest: 4.6, crumble: 5.9, wind: 5.7, ghost: 7.6, tomb: 8.6 };
-  const T_DRY = { shrink: 2.6, raisin: 2.45, crack: 3.0, burst: 3.9, wind: 4.3, ghost: 6.4, tomb: 7.4 };
+  // Надгробие поднимается за TOMB_RISE после T_*.tomb, и только тогда облачко RIP (onTomb).
+  // Смерть → надгробие целиком: stone 6.5 с, dry 6.3 с (сценарии съёмки в showcase.js на это рассчитаны).
+  const T_STONE = { crack: 2.0, rest: 3.6, wind: 4.2, ghost: 4.8, tomb: 5.8 };
+  const T_DRY = { shrink: 2.6, raisin: 2.45, crack: 3.0, burst: 3.9, wind: 4.2, ghost: 4.6, tomb: 5.6 };
   const T_EGG = { fall: 0.3, land: 0.85, pop: 2.7, puff: 4.25, phones: 4.85, done: 5.7 };
+  const TOMB_RISE = 0.7;
+  // prefers-reduced-motion: без тряски, осколков, ветра и салюта — плавное угасание и надгробие
+  const T_CALM = { fade: 0.6, gone: 1.6, tomb: 1.8, egg: 0.5, hatch: 1.2, done: 2.0 };
+  const reduced = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
   let mode = 'none';            // none | dying | dead | hatching
   let st = null;                // состояние текущей анимации
@@ -33,11 +39,23 @@
   let sound = true;
 
   // ---------- звук ----------
-  let actx = null, noiseBuf = null;
+  let actx = null, noiseBuf = null, sleepAt = 0, sleepTimer = 0;
+  // после последнего звука контекст засыпает: аудиопоток не держится весь день (r1-09-05)
+  function sleepLater(sec) {
+    const a = actx;
+    if (!a) return;
+    sleepAt = Math.max(sleepAt, a.currentTime + sec + 1.5);
+    clearTimeout(sleepTimer);
+    sleepTimer = setTimeout(function chk() {
+      if (a.currentTime < sleepAt) { sleepTimer = setTimeout(chk, (sleepAt - a.currentTime) * 1000 + 50); return; }
+      if (a.state === 'running') a.suspend().catch(() => {});
+    }, (sleepAt - a.currentTime) * 1000 + 50);
+  }
   function audio() {
     if (!sound) return null;
     try {
       actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === 'suspended') actx.resume().catch(() => {});
       if (!noiseBuf) {
         noiseBuf = actx.createBuffer(1, actx.sampleRate, actx.sampleRate);
         const d = noiseBuf.getChannelData(0);
@@ -58,6 +76,7 @@
       g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
       s.connect(f).connect(g).connect(a.destination);
       s.start(t0); s.stop(t0 + dur + 0.05);
+      sleepLater(delay + dur);
     } catch (e) { /* тишина */ }
   }
   function tone(f1, f2, dur, vol, delay = 0, type = 'triangle') {
@@ -73,6 +92,7 @@
       g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
       o.connect(g).connect(a.destination);
       o.start(t0); o.stop(t0 + dur + 0.05);
+      sleepLater(delay + dur);
     } catch (e) { /* тишина */ }
   }
   const sfx = {
@@ -263,22 +283,28 @@
           pc.width = Math.ceil(w * dpr); pc.height = Math.ceil(h * dpr);
           const g = pc.getContext('2d');
           g.scale(dpr, dpr); g.translate(-minx, -miny);
-          // скруглённый многоугольник — похоже на камушек, а не на стекло
-          const n = tri.length, mid = (k) => [(tri[k % n][0] + tri[(k + 1) % n][0]) / 2, (tri[k % n][1] + tri[(k + 1) % n][1]) / 2];
+          // угловатый многоугольник со срезанными углами — обломок камня, а не овальный листик (r1-03-08)
+          const n = tri.length, cut = (k, f) => [lerp(tri[k % n][0], tri[(k + 1) % n][0], f), lerp(tri[k % n][1], tri[(k + 1) % n][1], f)];
           g.beginPath();
-          g.moveTo(...mid(0));
-          for (let k = 1; k <= n; k++) { const v = tri[k % n], m = mid(k); g.quadraticCurveTo(v[0], v[1], m[0], m[1]); }
+          for (let k = 0; k < n; k++) { g.lineTo(...cut(k, 0.14)); g.lineTo(...cut(k, 0.86)); }
           g.closePath();
           g.save(); g.clip();
+          g.globalAlpha = 0.3;          // от жабы только намёк на рисунок, цвет — камня
           g.drawImage(comp, 0, 0, W, H);
-          // серый камень + объём осколка
-          g.fillStyle = `rgba(${125 + Math.random() * 40 | 0},${126 + Math.random() * 36 | 0},120,.62)`;
+          g.globalAlpha = 1;
+          g.globalCompositeOperation = 'color';
+          const grey = 118 + Math.random() * 34 | 0;
+          g.fillStyle = `rgb(${grey},${grey},${grey - 4})`;
           g.fillRect(minx, miny, w, h);
+          g.globalCompositeOperation = 'destination-over';
+          g.fillRect(minx, miny, w, h);
+          g.globalCompositeOperation = 'source-over';
+          // грани: светлая сверху-слева, тень снизу-справа
           const gr = g.createLinearGradient(minx, miny, maxx, maxy);
-          gr.addColorStop(0, 'rgba(255,255,255,.3)'); gr.addColorStop(0.5, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(0,0,0,.35)');
+          gr.addColorStop(0, 'rgba(255,255,255,.35)'); gr.addColorStop(0.45, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(0,0,0,.4)');
           g.fillStyle = gr; g.fillRect(minx, miny, w, h);
           g.restore();
-          g.strokeStyle = 'rgba(38,40,38,.85)'; g.lineWidth = 1.3; g.lineJoin = 'round';
+          g.strokeStyle = 'rgba(38,40,38,.9)'; g.lineWidth = 1.2; g.lineJoin = 'miter';
           g.stroke();
           const dx = mx - cx, dy = my - cy;
           pieces.push({
@@ -442,22 +468,25 @@
   }
 
   // ---------- надгробие ----------
+  // один формат длительности на надгробии, в уведомлениях и на кладбище — FrogCore.fmtDur (r1-05-05)
   function fmtAge(min) {
+    if (window.FrogCore && window.FrogCore.fmtDur) return window.FrogCore.fmtDur(min);
     min = Math.max(0, Math.round(min || 0));
     if (min < 60) return `${min} мин`;
     const h = Math.floor(min / 60), m = min % 60;
-    if (h >= 48) return `${Math.floor(h / 24)} дн ${h % 24} ч`;
-    return m ? `${h} ч ${m} мин` : `${h} ч`;
+    return h >= 24 ? `${Math.floor(h / 24)} дн ${h % 24} ч` : m ? `${h} ч ${m} мин` : `${h} ч`;
   }
 
   function drawTomb(g, t) {
     if (!tomb) return;
-    const k = easeBack(seg(t, tomb.t0, tomb.t0 + 0.7));
+    const k = easeBack(seg(t, tomb.t0, tomb.t0 + TOMB_RISE));
     const sink = tomb.sink ? ease(seg(t, tomb.sink, tomb.sink + 0.45)) : 0;
-    const dy = (1 - k) * 130 + sink * 140;
-    const wob = tomb.wob ? Math.sin((t - tomb.wob) * 30) * 0.05 * Math.max(0, 1 - (t - tomb.wob) / 0.6) : 0;
+    // reduce: на месте, проявляется и гаснет
+    const dy = tomb.calm ? 0 : (1 - k) * 130 + sink * 140;
+    const wob = tomb.wob && !tomb.calm ? Math.sin((t - tomb.wob) * 30) * 0.05 * Math.max(0, 1 - (t - tomb.wob) / 0.6) : 0;
     const x0 = 86, x1 = 174, top = 120 + OY;
     g.save();
+    if (tomb.calm) g.globalAlpha = seg(t, tomb.t0, tomb.t0 + TOMB_RISE) * (1 - sink);
     g.beginPath(); g.rect(0, 0, W, LID + OY + 6); g.clip();   // всё ниже уходит за ноутбук
     g.translate(130, LID + OY + dy); g.rotate(wob); g.translate(-130, -(LID + OY));
     // камень
@@ -507,9 +536,10 @@
       g.fillStyle = '#343b50';
       g.beginPath(); g.roundRect(cx - 4 - dir * 1.5, top + 21, 8, 22, 4); g.fill();
       g.fillStyle = '#ff5d5d';
-      g.globalAlpha = 0.5 + 0.5 * Math.sin(t * 2);
+      const ga = g.globalAlpha;
+      g.globalAlpha = ga * (tomb.calm ? 0.8 : 0.5 + 0.5 * Math.sin(t * 2));
       g.beginPath(); g.arc(cx + dir * 3, top + 24, 1.6, 0, Math.PI * 2); g.fill();
-      g.globalAlpha = 1;
+      g.globalAlpha = ga;
     }
     g.restore();
   }
@@ -661,7 +691,7 @@
       sweep();
       tomb = null;
       mode = 'dying';
-      st = { kind: cause === 'dry' ? 'dry' : 'stone', t0: now(), info, cracks: makeCracks(), flags: {} };
+      st = { kind: cause === 'dry' ? 'dry' : 'stone', t0: now(), info, cracks: makeCracks(), flags: {}, calm: reduced() };
       if (st.kind === 'dry') sfx.shrivel();
     },
     // сразу надгробие, без анимации
@@ -669,18 +699,22 @@
       sweep();
       mode = 'dead';
       st = null;
-      tomb = { t0: now() - 5, gen: info.generation, cause: cause === 'dry' ? 'dry' : 'stone', ageMin: info.ageMin, info, flowers: now() - 5 };
+      tomb = { t0: now() - 5, gen: info.generation, cause: cause === 'dry' ? 'dry' : 'stone', ageMin: info.ageMin, info, flowers: now() - 5, told: true, calm: reduced() };
     },
     // возрождение: яйцо → головастик → жаба
     reborn(info = {}) {
       const t = now();
-      if (tomb) { tomb.sink = t; puff(130, LID + OY - 4, 12, '#c9cdc4'); }
-      pieces = []; heap = [];
+      const calm = reduced();
+      // пыль и камушки прошлой смерти не летают вокруг яйца (r1-04-12)
+      sweep();
+      if (tomb) { tomb.sink = t; tomb.told = true; if (!calm) puff(130, LID + OY - 4, 12, '#c9cdc4'); }
       mode = 'hatching';
-      st = { kind: 'egg', t0: t, info, flags: {} };
+      st = { kind: 'egg', t0: t, info, flags: {}, calm };
     },
     reset() { sweep(); mode = 'none'; st = null; tomb = null; },
-    stats() { return { parts: parts.length, pieces: pieces.length, heap: heap.length, tomb: !!tomb }; },
+    stats() { return { parts: parts.length, pieces: pieces.length, heap: heap.length, tomb: !!tomb, tombUp: tomb && !tomb.sink ? seg(now(), tomb.t0, tomb.t0 + TOMB_RISE) : 0 }; },
+    // для проверок: где сейчас частицы (координаты окна) и их непрозрачность
+    parts() { return parts.map((p) => ({ kind: p.kind, x: p.x, y: p.y, a: (p.a == null ? 1 : p.a) * Math.min(1, (1 - p.life / p.max) * 2.5) })); },
     info() { return tomb ? { generation: tomb.gen, cause: tomb.cause, ageMin: tomb.ageMin, text: tomb.info && tomb.info.text } : null; },
     fmtAge,
     // клик по надгробию — оно покачивается
@@ -691,6 +725,16 @@
       if (mode === 'none') return null;
       if (mode === 'dead') return { show: false };
       const el = t - st.t0;
+      if (st.calm) {
+        if (st.kind === 'egg') {
+          if (el < T_CALM.hatch) return { show: false };
+          return { show: true, alpha: seg(el, T_CALM.hatch, T_CALM.done), happy: true };
+        }
+        if (el >= T_CALM.gone) return { show: false };
+        const o = { show: true, faceDead: true, alpha: 1 - seg(el, T_CALM.fade, T_CALM.gone) };
+        o[st.kind === 'dry' ? 'dry' : 'stone'] = 1;
+        return o;
+      }
       if (st.kind === 'stone') {
         if (el >= T_STONE.crack) return { show: false };
         const p = el / T_STONE.crack;
@@ -725,7 +769,7 @@
         const p = el / T_STONE.crack;
         drawCracks(g, st.cracks, el, clamp((p - 0.45) * 1.8, 0, 0.9));
         // вспышка перед разломом
-        const fl = seg(el, T_STONE.crack - 0.25, T_STONE.crack);
+        const fl = st.calm ? 0 : seg(el, T_STONE.crack - 0.25, T_STONE.crack);
         if (fl > 0) { g.fillStyle = `rgba(220,255,230,${fl * 0.75})`; g.fillRect(0, 0, W, H); }
       } else if (st.kind === 'dry') {
         const p = seg(el, 0, T_DRY.shrink);
@@ -741,9 +785,15 @@
     drawBehind(g, t, dt) {
       if (tomb) {
         drawTomb(g, t);
-        if (tomb.sink && t - tomb.sink > 0.6) tomb = null;
+        // облачко RIP — когда надгробие уже поднялось, а не над пустым местом (r1-03-06)
+        if (!tomb.told && t >= tomb.t0 + TOMB_RISE) { tomb.told = true; opt.onTomb && opt.onTomb(this.info()); }
+        if (tomb && tomb.sink && t - tomb.sink > 0.6) tomb = null;
       }
-      if (mode === 'hatching') {
+      if (mode === 'hatching' && st.calm) {
+        // reduce: яйцо проявляется на столе и тает, жаба проявляется на его месте
+        const el = t - st.t0, a = seg(el, 0, T_CALM.egg) * (1 - seg(el, T_CALM.hatch - 0.2, T_CALM.hatch + 0.3));
+        if (a > 0) { g.save(); g.globalAlpha = a; g.translate(EGG.x, EGG.y + OY); eggPath(g); g.fillStyle = '#f3e7c9'; g.fill(); g.strokeStyle = '#6b5a3a'; g.lineWidth = 2.2; g.stroke(); g.restore(); }
+      } else if (mode === 'hatching') {
         const el = t - st.t0;
         drawEgg(g, t, el);
         drawTadpole(g, t, el);
@@ -753,7 +803,13 @@
     // перед ноутбуком и стаканом: камушки, изюм, песок, пыль, ветер
     drawFront(g, t, dt) {
       let windK = 0;
-      if (mode === 'dying') {
+      if (mode === 'dying' && st.calm) {
+        if (t - st.t0 >= T_CALM.tomb) this._toTomb(t);
+      } else if (mode === 'hatching' && st.calm) {
+        const el = t - st.t0, f = st.flags;
+        if (!f.pop && el > T_CALM.hatch) { f.pop = 1; sfx.sparkle(); }
+        if (el > T_CALM.done) { mode = 'none'; const info = st.info; st = null; opt.onHatched && opt.onHatched(info); }
+      } else if (mode === 'dying') {
         const el = t - st.t0, f = st.flags;
         if (st.kind === 'stone') {
           // осыпаются крошки во время трещин
@@ -768,7 +824,7 @@
             shatter();
             sfx.shatter(); sfx.clatter();
             puff(130, 170 + OY, 26, '#c7c8c0', 1.4);
-            add({ kind: 'ring', x: 130, y: 170 + OY, r: 70, sq: 0.8, c: 'rgba(220,255,230,.9)', max: 0.45 });
+            add({ kind: 'ring', x: 130, y: 170 + OY, r: 70, sq: 0.8, c: 'rgba(150,150,144,.7)', max: 0.4 });
           }
           if (pieces.length) stepPieces(g, dt, el);
           if (!f.wind && el > T_STONE.wind) { f.wind = 1; sfx.wind(); windStreaks(8, 180 + OY, 300); }
@@ -798,18 +854,19 @@
         for (const [i, b0] of [[1, 1.1], [2, 1.65], [3, 2.2]]) if (!f['k' + i] && el > b0) { f['k' + i] = 1; sfx.knock(); }
         if (!f.pop && el > T_EGG.pop) {
           f.pop = 1; sfx.pop();
-          add({ kind: 'shell', x: 130, y: EGG.y + OY - 14, vx: rnd(-80, 80), vy: -320, r: 26, vr: rnd(-9, 9), g: 900, max: 1.4, drag: 0 });
-          for (let i = 0; i < 10; i++) add({ kind: 'shell', x: 130 + rnd(-30, 30), y: EGG.y + OY - 2, vx: rnd(-150, 150), vy: rnd(-260, -80), r: rnd(3, 7), vr: rnd(-12, 12), g: 900, max: 1.2, drag: 0, floor: FLOOR + OY + rnd(0, 8) });
+          // крышечка улетает вверх и тает, крошки скорлупы падают на стол рядом с ноутбуком (r1-03-10)
+          add({ kind: 'shell', x: 130, y: EGG.y + OY - 14, vx: rnd(-60, 60), vy: -320, r: 26, vr: rnd(-9, 9), g: 900, max: 0.75, drag: 0 });
+          for (let i = 0; i < 10; i++) { const side = i % 2 ? 1 : -1; add({ kind: 'shell', x: 130 + side * rnd(10, 30), y: EGG.y + OY - 2, vx: side * rnd(40, 95), vy: rnd(-240, -90), r: rnd(3, 7), vr: rnd(-12, 12), g: 900, max: 1.2, drag: 0.6, floor: FLOOR + OY - rnd(0, 3) }); }
           for (let i = 0; i < 12; i++) add({ kind: 'spark', x: 130 + rnd(-40, 40), y: EGG.y + OY + rnd(-40, 10), r: rnd(4, 8), c: i % 2 ? '#ffe680' : '#ffffff', max: rnd(0.5, 0.9), rot: rnd(0, 1) });
         }
-        if (el > T_EGG.pop + 0.3 && el < T_EGG.puff && Math.random() < 0.3) add({ kind: 'bubble', x: 130 + rnd(-20, 20), y: EGG.y + OY - 40, vy: -40, r: rnd(2, 4), ph: rnd(0, 6), max: 1, drag: 0 });
+        // пузырьки кончаются до вспышки, чтобы не сидеть на глазах новой жабы
+        if (el > T_EGG.pop + 0.3 && el < T_EGG.puff - 0.7 && Math.random() < 0.3) add({ kind: 'bubble', x: 130 + rnd(-20, 20), y: EGG.y + OY - 40, vy: -40, r: rnd(2, 4), ph: rnd(0, 6), max: 0.7, drag: 0 });
         if (!f.puff && el > T_EGG.puff) {
           f.puff = 1; sfx.sparkle();
-          add({ kind: 'ring', x: 130, y: 160 + OY, r: 80, c: 'rgba(255,240,170,.95)', max: 0.5 });
-          add({ kind: 'ring', x: 130, y: 160 + OY, r: 55, c: 'rgba(255,255,255,.9)', max: 0.4 });
-          puff(130, 160 + OY, 18, '#ffffff', 1.3);
-          for (let i = 0; i < 18; i++) { const a = i / 18 * Math.PI * 2; add({ kind: 'spark', x: 130 + Math.cos(a) * 30, y: 160 + OY + Math.sin(a) * 30, vx: Math.cos(a) * 150, vy: Math.sin(a) * 150, r: rnd(5, 9), c: ['#ffe680', '#9ff0b0', '#ffffff', '#ff9ac4'][i % 4], max: rnd(0.6, 1), drag: 3 }); }
-          for (let i = 0; i < 4; i++) add({ kind: 'heart', text: '💚', x: 130 + rnd(-60, 60), y: 150 + OY, vy: rnd(-70, -40), vx: rnd(-20, 20), r: rnd(12, 16), max: 1.6, drag: 0.3 });
+          // лучший кадр ролика: морда новой жабы открыта — кольцо, искры и сердечки вокруг, дым у стола (r1-03-02)
+          for (const sx of [-1, 1]) puff(130 + sx * 74, LID + OY - 6, 6, '#ffffff', 0.7);
+          for (let i = 0; i < 18; i++) { const a = i / 18 * Math.PI * 2; add({ kind: 'spark', x: 130 + Math.cos(a) * 70, y: 160 + OY + Math.sin(a) * 66, vx: Math.cos(a) * 150, vy: Math.sin(a) * 150, r: rnd(5, 9), c: ['#ffe680', '#9ff0b0', '#ffffff', '#ff9ac4'][i % 4], max: rnd(0.6, 1), drag: 3 }); }
+          for (let i = 0; i < 4; i++) { const side = i % 2 ? 1 : -1; add({ kind: 'heart', text: '💚', x: 130 + side * rnd(66, 92), y: 130 + OY + rnd(-10, 20), vy: rnd(-60, -35), vx: side * rnd(5, 20), r: rnd(12, 16), max: 1.6, drag: 0.3 }); }
         }
         if (!f.phones && el > T_EGG.phones + 0.4) { f.phones = 1; sfx.knock(); sfx.croak(); }
         if (el > T_EGG.done) {
@@ -824,13 +881,14 @@
 
     _toTomb(t) {
       const info = st.info || {};
-      tomb = { t0: t, gen: info.generation, cause: st.kind, ageMin: info.ageMin, info, flowers: t + 0.5 };
+      const calm = st.calm;
+      tomb = { t0: t, gen: info.generation, cause: st.kind, ageMin: info.ageMin, info, flowers: t + 0.5, calm };
       mode = 'dead';
       st = null;
       pieces = [];
       sfx.sad();
-      puff(130, LID + OY - 2, 10, '#c9cdc4', 0.8);
-      opt.onTomb && opt.onTomb(this.info());
+      if (!calm) puff(130, LID + OY - 2, 10, '#c9cdc4', 0.8);
+      // onTomb (облачко RIP) — из drawBehind, когда надгробие поднимется
     },
   };
 
