@@ -1,4 +1,4 @@
-const H = require('./h');
+const H = require('./harness');
 const { Menu } = require('electron');
 module.exports = async (api) => {
   await H.sleep(500);

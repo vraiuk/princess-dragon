@@ -1,4 +1,4 @@
-const H = require('./h');
+const H = require('./harness');
 module.exports = async (api) => {
   await H.sleep(2500);
   const v = api.pet.view(Date.now());

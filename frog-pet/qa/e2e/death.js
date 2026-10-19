@@ -1,9 +1,9 @@
-const H = require('./h');
+const H = require('./harness');
 const fs = require('fs');
 module.exports = async (api) => {
   H.trayTitle(api);
   // подготовка: живая жаба на грани, lastTick свежий, onboarded
-  if (process.env.PHASE === 'prep') {
+  if (H.phase === 'die') {
     api.pet.state.waterMs = 5 * 3600000;
     await H.sleep(2500);
     const v = api.pet.view(Date.now());
@@ -28,12 +28,12 @@ module.exports = async (api) => {
     const v3 = api.pet.view(Date.now());
     H.ok(v3.life === 'dead' && v3.cause === 'stone', 'stone death ' + v3.cause);
     const ach3 = api.achievements.list().filter((a) => a.unlocked).map((a) => a.id);
-    fs.writeFileSync(__dirname + '/s4.ach', JSON.stringify(ach3));
+    fs.writeFileSync(H.side('ach.json'), JSON.stringify(ach3));
     console.log('ach', ach3.join(','));
     return H.done();
   }
   await H.sleep(1500);
-  const exp = JSON.parse(fs.readFileSync(__dirname + '/s4.ach'));
+  const exp = JSON.parse(fs.readFileSync(H.side('ach.json')));
   const now = api.achievements.list().filter((a) => a.unlocked).map((a) => a.id);
   H.ok(exp.every((x) => now.includes(x)), 'achievements persisted ' + now.length);
   const v = api.pet.view(Date.now());

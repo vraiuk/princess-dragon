@@ -1,6 +1,17 @@
-const H = require('./h');
+const H = require('./harness');
 const fs = require('fs');
+// Фазы: start — приложение живо с битым frog.json и выходит штатно; restart — выход сохранил состояние
+async function restart(api) {
+  await H.sleep(800);
+  const e = Number(fs.readFileSync(H.side('drinks.txt'), 'utf8'));
+  H.ok(api.pet.view(Date.now()).day.drinks === e, 'state saved on quit: drinks ' + e);
+  const f = H.file(api);
+  H.ok(typeof f === 'object' && f.pet && f.settings, 'frog.json valid after recovery');
+  H.done();
+}
+
 module.exports = async (api) => {
+  if (H.phase === 'restart') return restart(api);
   await H.sleep(1500);
   const v = api.pet.view(Date.now());
   H.ok(v && typeof v.waterLeftMin === 'number' && !Number.isNaN(v.waterLeftMin), 'view ok: waterLeftMin ' + v.waterLeftMin + ' gen ' + v.generation);
@@ -23,7 +34,6 @@ module.exports = async (api) => {
     H.ok(true, 'drag + ignore no crash');
   }
   const drinks = api.pet.view(Date.now()).day.drinks;
-  fs.writeFileSync(__dirname + '/s7.drinks', String(drinks));
-  console.log('[result] quitting via app.quit');
-  require('electron').app.quit();
+  fs.writeFileSync(H.side('drinks.txt'), String(drinks));
+  H.done();
 };

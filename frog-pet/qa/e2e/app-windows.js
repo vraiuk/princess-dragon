@@ -1,4 +1,4 @@
-const H = require('./h');
+const H = require('./harness');
 const { BrowserWindow } = require('electron');
 module.exports = async (api) => {
   await H.sleep(1000);
@@ -24,7 +24,9 @@ module.exports = async (api) => {
   // close each
   for (const name of ['trophies', 'settings', 'welcome']) {
     const w = api.appWins[name];
-    await H.exec(w, 'frogApp.close()').catch(() => {}); await H.sleep(500);
+    // не ждём ответа executeJavaScript: окно закрывается и промис может не вернуться никогда
+    H.exec(w, 'frogApp.close()').catch(() => {});
+    await H.until(() => w.isDestroyed() && !api.appWins[name], 3000); await H.sleep(200);
     H.ok(w.isDestroyed() && !api.appWins[name], name + ' closed');
   }
   // reopen after close

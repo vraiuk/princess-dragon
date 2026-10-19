@@ -16,7 +16,44 @@ permissions:
   contents: write
 
 jobs:
+  qa:
+    name: 'QA: тесты, UI, e2e в Electron'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frog-pet
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frog-pet/package-lock.json
+      - run: npm ci
+      - name: Юнит-тесты и фазз
+        run: npm test
+      - name: Playwright для UI-проверок (не в devDependencies)
+        run: |
+          npm i --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: UI-проверки в браузере
+        run: npm run qa:ui
+      - name: xvfb и библиотеки для Electron
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64 libxss1
+      - name: E2E в настоящем Electron
+        run: npm run qa:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frog-qa-out
+          path: frog-pet/qa/out
+          if-no-files-found: warn
+
   build:
+    needs: qa
     runs-on: macos-latest
     defaults:
       run:

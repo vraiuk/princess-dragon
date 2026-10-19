@@ -1,6 +1,19 @@
-const H = require('./h');
+const H = require('./harness');
 const { powerMonitor } = require('electron');
+// Фазы: act — действия, смерть/возрождение, окна, настройки; restart — всё это пережило перезапуск
+async function restart(api) {
+  await H.sleep(1500);
+  const e = JSON.parse(require('fs').readFileSync(H.side('expect.json'), 'utf8'));
+  const v = api.pet.view(Date.now());
+  H.ok(v.generation === e.gen && v.day.drinks === e.drinks, 'state restored ' + JSON.stringify(e));
+  H.ok(api.settings.scale === 1.5 && api.settings.deathEnabled === false && api.settings.waterEvery === 30 && api.settings.sound === false, 'settings restored');
+  H.ok(JSON.stringify(api.win.getSize()) === '[390,480]', 'size restored ' + api.win.getSize());
+  H.ok(api.win.webContents.getZoomFactor() === 1.5, 'zoom restored');
+  H.done();
+}
+
 module.exports = async (api) => {
+  if (H.phase === 'restart') return restart(api);
   await H.sleep(1500);
   console.log('idle', powerMonitor.getSystemIdleTime());
   const W = api.win, now = () => Date.now();
@@ -51,6 +64,6 @@ module.exports = async (api) => {
   H.ok(api.pet.view(now()).life === 'alive', 'no death with deathEnabled=false');
   api.pet.state.waterMs = 0;
   const st = JSON.stringify({ gen: api.pet.view(now()).generation, drinks: api.pet.view(now()).day.drinks });
-  require('fs').writeFileSync(__dirname + '/s3.expect', st);
+  require('fs').writeFileSync(H.side('expect.json'), st);
   H.done();
 };
