@@ -8,6 +8,7 @@
 //   check    — (ctx) => [[условие, 'что проверили'], ...] в node после выхода
 //   second   — запустить второй экземпляр, когда первый напечатает [ready]: { expectExit, timeout }
 //   timeout  — мс на фазу (по умолчанию 60 с)
+//   allow    — RegExp: строки-признаки падения, которые в этой фазе ожидаемы (сценарий сам роняет рендер)
 const fs = require('fs');
 const path = require('path');
 const fx = require('./fixtures');
@@ -39,4 +40,24 @@ module.exports = [
   corrupt('junk-fields'),
   { name: 'single-instance', script: 'single-instance.js', phases: [{ name: 'start', second: { expectExit: 0, timeout: 20000 } }] },
   { name: 'app-menu', script: 'app-menu.js', phases: [{ name: 'start' }] },
+  // круг 2: main/preload/IPC
+  { name: 'chaos', script: 'chaos.js', phases: [{ name: 'start', allow: /\[renderer gone\] crashed/ }] },
+  {
+    name: 'security',
+    script: 'security.js',
+    phases: [
+      { name: 'start', setup: (ctx) => fx.corrupt(ctx.userData, 'truncated') },
+      // второй битый файл не затирает копию первого
+      {
+        name: 'again',
+        setup: (ctx) => fx.corrupt(ctx.userData, 'truncated'),
+        check: (ctx) => {
+          const b = fs.readdirSync(ctx.userData).filter((f) => f.startsWith('frog.json.broken'));
+          return [[b.length >= 2, 'both broken copies kept: ' + b.join(', ')]];
+        },
+      },
+    ],
+  },
+  { name: 'perf', script: 'perf.js', phases: [{ name: 'start' }] },
+  { name: 'nag', script: 'nag.js', phases: [{ name: 'start' }, { name: 'burst' }] },
 ];

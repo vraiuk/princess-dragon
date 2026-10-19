@@ -101,7 +101,7 @@ async function runPhase(sc, phase, ctx) {
   const ok = r.lines.filter((l) => l.startsWith('[ok]'));
   const failLines = r.lines.filter((l) => l.startsWith('[FAIL]'));
   const result = r.lines.find((l) => l.startsWith('[result]'));
-  const crash = r.lines.filter((l) => CRASH.test(l));
+  const crash = r.lines.filter((l) => CRASH.test(l) && !(phase.allow && phase.allow.test(l)));
   const problems = [];
   if (r.timedOut) problems.push(`timeout ${timeout} мс`);
   else if (r.code !== 0) problems.push(`exit code ${r.code}${r.signal ? ' ' + r.signal : ''}`);

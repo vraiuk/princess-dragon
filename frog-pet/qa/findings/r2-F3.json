@@ -1,0 +1,159 @@
+[
+  {
+    "finding": "r1-07-01",
+    "verdict": "confirmed",
+    "why": "forcefullyCrashRenderer: окно жабы осталось пустым (isCrashed=true), send() сыпал ошибками.",
+    "fix": "main: render-process-gone → loadFile через 0.5 с (не больше 3 падений в минуту); send/pushApp не шлют в упавший рендер. Тот же обработчик стоит на окнах приложения.",
+    "test": "qa/e2e/chaos.js"
+  },
+  {
+    "finding": "r1-07-02",
+    "verdict": "confirmed",
+    "why": "scale 0.75→1.5 у левого верхнего края: {x:-195,y:-240}.",
+    "fix": "applyScale зажимает окно в workArea экрана (clampToScreen).",
+    "test": "qa/e2e/chaos.js"
+  },
+  {
+    "finding": "r1-07-03",
+    "verdict": "confirmed",
+    "why": "Таймер moveDrag перебивал якорь applyScale старыми drag.wx/wy.",
+    "fix": "applyScale сдвигает якорь drag на ту же величину, что и окно; окно растёт вверх-влево и остаётся на экране.",
+    "test": "qa/e2e/chaos.js"
+  },
+  {
+    "finding": "r1-07-04",
+    "verdict": "confirmed",
+    "why": "Пункт «Высидеть» был активен на съёмке, act шёл в съёмочную жабу.",
+    "fix": "Пункт выключается на время съёмки, как «попил/размялся».",
+    "test": "qa/e2e/chaos.js"
+  },
+  {
+    "finding": "r1-07-05",
+    "verdict": "confirmed",
+    "why": "openWindow возвращал упавшее окно с isCrashed()=true.",
+    "fix": "Окно приложения после падения перезагружается само; если рендер так и не поднялся, openWindow уничтожает его и создаёт новое.",
+    "test": "qa/e2e/chaos.js"
+  },
+  {
+    "finding": "r1-07-06",
+    "verdict": "confirmed",
+    "why": "После stopFilm hidden=false.",
+    "fix": "film.wasHidden: после съёмки жаба снова спрятана; save() во время съёмки пишет hidden:true; «Показать/Спрятать» на съёмке меняет wasHidden.",
+    "test": "qa/e2e/chaos.js"
+  },
+  {
+    "finding": "r1-07-07",
+    "verdict": "confirmed",
+    "why": "Заголовок трея не менялся: startFilm не вызывал updateTray, а старый тест вызывал его вручную.",
+    "fix": "startFilm вызывает updateTray().",
+    "test": "qa/e2e/chaos.js"
+  },
+  {
+    "finding": "r1-07-08",
+    "verdict": "confirmed",
+    "why": "Из 200 быстрых действий получалась пачка уведомлений об ачивках.",
+    "fix": "Громкие ачивки копятся 1.5 с и уходят одним уведомлением.",
+    "test": "qa/e2e/nag.js (фаза burst)"
+  },
+  {
+    "finding": "r1-10-01",
+    "verdict": "confirmed",
+    "why": "location.href='file:///etc/hostname' уводил окно жабы; window.open открывал новое окно. Сам drop не воспроизводил: под xvfb нет файлового DnD, но он идёт той же навигацией.",
+    "fix": "web-contents-created: will-navigate → preventDefault, will-attach-webview → запрет, setWindowOpenHandler → deny.",
+    "test": "qa/e2e/security.js"
+  },
+  {
+    "finding": "r1-10-03",
+    "verdict": "confirmed",
+    "why": "В коде хуки не зависели от app.isPackaged.",
+    "fix": "FROG_TEST_SCRIPT и FROG_SNAPSHOT(_EVERY) читаются только при !app.isPackaged. FROG_SHOWCASE оставлен: он только запускает сценарий, им снимают ролики. Fuses и hardened runtime — к F10 (packaging).",
+    "test": null
+  },
+  {
+    "finding": "r1-10-04",
+    "verdict": "confirmed",
+    "why": "app:open('constructor') бросал исключение в main; snooze kind 'x0..' попадал в nextNag; pause 'abc' давал NaN, 1e12 — бесконечную паузу; nagEvery 0.0001 принимался; app:set с чужим sender применялся.",
+    "fix": "Отправитель проверяется: главный фрейм, URL из app/renderer, окно жабы или окно приложения. openWindow принимает только собственные ключи. Для snooze kind ∈ {water, move}, minutes в 1..1440, иначе nagEvery. Pause: конечное число в 0..1440. Числовые настройки зажаты в LIMITS (и при загрузке из файла).",
+    "test": "qa/e2e/security.js"
+  },
+  {
+    "finding": "r1-10-05",
+    "verdict": "confirmed",
+    "why": "Notification.permission и geolocation в рендере были 'granted'.",
+    "fix": "Все запросы и проверки разрешений через setPermissionRequestHandler/CheckHandler получают отказ.",
+    "test": "qa/e2e/security.js"
+  },
+  {
+    "finding": "r1-10-09",
+    "verdict": "confirmed",
+    "why": "fsync не было, права 644, второй битый файл затирал .broken.",
+    "fix": "writeStore: open(0600) → write → fsync → rename, mkdir один раз. Вторая и следующие копии битого файла получают имя .broken-<время>.",
+    "test": "qa/e2e/security.js + check фазы again в scenarios.js"
+  },
+  {
+    "finding": "r1-09-01",
+    "verdict": "confirmed",
+    "why": "В спрятанном окне rAF шёл 90 раз за 1.5 с.",
+    "fix": "Пока жаба спрятана, setBackgroundThrottling(true): Chromium останавливает rAF. При показе throttling выключается.",
+    "test": "qa/e2e/perf.js"
+  },
+  {
+    "finding": "r1-09-06",
+    "verdict": "confirmed",
+    "why": "Когда мышь двигалась далеко от жабы, приходило 39 cursor-IPC за 2 с.",
+    "fix": "Совсем отключить нельзя: глаза жабы следят за курсором по всему экрану (pet.js cursorFresh). Поэтому дальше 120 px от окна cursor шлётся не чаще 4 раз в с, а keep-alive — раз в 2 с. Рядом с окном всё как раньше.",
+    "test": "qa/e2e/perf.js",
+    "handoff": "app/renderer/pet.js (F4): в trackPointer не вызывать isHit/elementFromPoint, если точка вне окна (x<0||y<0||x>W||y>H)."
+  },
+  {
+    "finding": "r1-09-07",
+    "verdict": "confirmed",
+    "why": "30 тыков давали 31 запись frog.json и 31 mkdirSync.",
+    "fix": "act, drag-end и ачивки сохраняют через saveSoon (одна запись на пачку за 1 с), mkdir выполняется один раз. Периодическую запись раз в 30 с оставил: lastTick меняется всегда, а пропуск записи стоит дороже, чем даёт.",
+    "test": "qa/e2e/perf.js"
+  },
+  {
+    "finding": "r1-04-02",
+    "verdict": "confirmed",
+    "why": "У filmCtl не было caption, поэтому титры в приложении не показывались.",
+    "fix": "filmCtl.caption(text) шлёт в окно жабы send('event', {type:'caption', text}); пустой text значит убрать титр.",
+    "test": "qa/e2e/chaos.js",
+    "handoff": "app/renderer/pet.js (F4): в onEvent добавить case 'caption'. Показывать ev.text плашкой поверх сцены, как #cap в demo.js: внизу окна, по центру, полупрозрачный тёмный фон, белый жирный текст в 2 строки, ширина не больше окна 260 px. Держать max(2600, min(6000, text.length*120)) мс, потом скрыть с fade. Новый титр заменяет старый, пустой text скрывает сразу. На filmEnd скрыть. Плашка не должна перекрывать облачко и морду (кадр 'готово к ролику'), pointer-events: none, clickthrough не ломать."
+  },
+  {
+    "finding": "r1-02-04",
+    "verdict": "confirmed",
+    "why": "В симуляции 45/50 мин после 55-й минуты напоминание приходит каждые 5 мин, в e2e — два уведомления в один тик.",
+    "fix": "Main: громкое напоминание («ква» и уведомление) — не чаще раза в nagEvery, остальные remind уходят с quiet:true и без уведомления. Если нужны обе потребности, одно уведомление «💧🤸 Пора попить и размяться». Это же покрывает handoff F1 п.1.",
+    "test": "qa/e2e/nag.js",
+    "handoff": "app/renderer/pet.js (F4): case 'remind' — если ev.quiet, не вызывать croak() и не давать anim.alert. Облачко (addNeed) показывать как обычно."
+  },
+  {
+    "finding": "r1-05-04",
+    "verdict": "confirmed",
+    "why": "Подсказка была «Жабка — вода через 0 мин, разминка через 0 мин».",
+    "fix": "Когда уже пора — «пора пить воду» / «пора размяться», на паузе — «на паузе ещё N». Минимум «через 1 мин». Длительности в main (меню, подсказка, уведомление о смерти) идут через Core.fmtDur (handoff F1 п.2).",
+    "test": "qa/e2e/nag.js"
+  },
+  {
+    "finding": "r1-04-14",
+    "verdict": "confirmed",
+    "why": "В title сценария уже есть «(~58 с)», а main дописывал длительность второй раз.",
+    "fix": "Длительность дописывается, только если её нет в title.",
+    "test": null
+  },
+  {
+    "finding": "handoff-F1",
+    "verdict": "confirmed",
+    "why": "Handoff от F1 (core.js).",
+    "fix": "1) Два remind в одном тике дают одно уведомление (см. r1-02-04). 2) age() и форматтер меню заменены на Core.fmtDur. 3) Съёмочная жаба создаётся с seeded(1017), тем же зерном, что в demo.js.",
+    "test": "qa/e2e/nag.js; film.js зелёный"
+  },
+  {
+    "finding": "note-e2e",
+    "verdict": "confirmed",
+    "why": "После коммита core 'critical before death always' смерть наступает на тик позже, и actions-settings падал по таймингу (died: alive).",
+    "fix": "В qa/e2e/actions-settings.js sleep(1500) заменён на H.until(life==='dead', 5 с). Проверка не ослаблена. В run.js добавлено поле фазы allow (ожидаемые строки [renderer gone] в chaos), в harness — spySend, trayMenu, within, onScreen.",
+    "test": "qa/e2e/actions-settings.js"
+  }
+]

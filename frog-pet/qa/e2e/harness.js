@@ -38,5 +38,33 @@ const H = {
     if (!t.__p) { t.__p = 1; const o = t.setTitle.bind(t); t.setTitle = (s) => { t.__title = s; o(s); }; }
     return t.__title;
   },
+  // меню и подсказка трея: последние значения setContextMenu / setToolTip
+  trayMenu(api) {
+    const t = api.tray;
+    if (!t.__pm) {
+      t.__pm = 1;
+      const m = t.setContextMenu.bind(t), tt = t.setToolTip.bind(t);
+      t.setContextMenu = (x) => { t.__menu = x; m(x); };
+      t.setToolTip = (s) => { t.__tip = s; tt(s); };
+    }
+    return t;
+  },
+  // всё, что main отправил в окно: [[канал, данные, время], ...]
+  spySend(w) {
+    const wc = w.webContents;
+    if (!wc.__sent) {
+      wc.__sent = [];
+      const o = wc.send.bind(wc);
+      wc.send = (ch, ...a) => { wc.__sent.push([ch, a[0], Date.now()]); return o(ch, ...a); };
+    }
+    return wc.__sent;
+  },
+  // промис с таймаутом: executeJavaScript в упавшем или ушедшем окне может не вернуться никогда
+  within: (p, ms, fallback) => Promise.race([p, new Promise((r) => setTimeout(() => r(fallback), ms))]),
+  // окно целиком внутри рабочей области своего экрана
+  onScreen(b) {
+    const a = require('electron').screen.getDisplayMatching(b).workArea;
+    return b.x >= a.x && b.y >= a.y && b.x + b.width <= a.x + a.width && b.y + b.height <= a.y + a.height;
+  },
 };
 module.exports = H;

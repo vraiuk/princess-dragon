@@ -38,7 +38,8 @@ module.exports = async (api) => {
   H.ok(api.pet.view(now()).generation === g, 'revive alive = noop');
   // убить
   api.pet.state.waterMs = 10 * 3600000;
-  await H.sleep(1500);
+  // core: сначала тик с critical, смерть — на следующем
+  await H.until(() => api.pet.view(now()).life === 'dead', 5000);
   v = api.pet.view(now());
   H.ok(v.life === 'dead' && v.cause === 'dry', 'died: ' + v.life);
   await fa('revive'); await H.sleep(200);

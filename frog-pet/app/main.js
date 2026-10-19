@@ -1,9 +1,10 @@
 'use strict';
 const {
-  app, BrowserWindow, Tray, Menu, ipcMain, powerMonitor, screen, Notification, nativeImage, dialog,
+  app, BrowserWindow, Tray, Menu, ipcMain, powerMonitor, screen, Notification, nativeImage, dialog, session,
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { pathToFileURL } = require('url');
 const Core = require('./core');
 
 // Модули других частей приложения — подключаем защитно: их может ещё не быть
@@ -19,6 +20,10 @@ const Showcase = optional('./showcase');
 const BASE_W = 260, BASE_H = 320;
 const SETTING_KEYS = ['waterEvery', 'moveEvery', 'breakAfter', 'nagEvery', 'scale', 'sound', 'notify', 'launchAtLogin', 'deathEnabled'];
 const NUM_KEYS = ['waterEvery', 'moveEvery', 'breakAfter', 'nagEvery', 'scale'];
+// Границы числовых настроек (мин; scale — множитель): мусор из файла или IPC не ломает таймеры
+const LIMITS = { waterEvery: [1, 480], moveEvery: [1, 480], breakAfter: [1, 120], nagEvery: [1, 240], scale: [0.5, 3] };
+const clampSetting = (k, n) => Math.min(LIMITS[k][1], Math.max(LIMITS[k][0], n));
+const MAX_PAUSE_MIN = 24 * 60;
 const DEFAULTS = Object.assign({ deathEnabled: true }, Core.DEFAULTS);
 
 let win = null, tray = null, pet = null, achievements = null;
@@ -29,8 +34,10 @@ let locked = false, lockedAt = 0;
 let drag = null;
 let menuStamp = '';
 let quitting = false;
-let film = null;              // режим съёмки: { pet, A, now, director, name }
+let film = null;              // режим съёмки: { pet, A, now, director, name, wasHidden }
 const appWins = {};           // окна приложения: trophies / settings / welcome
+// Отладочные хуки (автотест, снимки) — только в разработке, не в собранном приложении
+const devEnv = (k) => (app.isPackaged ? '' : process.env[k] || '');
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
@@ -64,7 +71,9 @@ function load() {
     // битый файл не затираем молча: оставляем копию рядом
     if (e && e.code !== 'ENOENT') {
       console.error('frog.json не читается, начинаем заново', e.message);
-      try { fs.copyFileSync(storePath(), storePath() + '.broken'); } catch { /* нечего копировать */ }
+      // прошлую копию не затираем: вторая и дальше — с меткой времени
+      const keep = fs.existsSync(storePath() + '.broken') ? `${storePath()}.broken-${Date.now()}` : storePath() + '.broken';
+      try { fs.copyFileSync(storePath(), keep); } catch { /* нечего копировать */ }
     }
   }
   if (!isObj(data)) return {};
@@ -81,7 +90,7 @@ function cleanSettings(s) {
     if (!(k in s)) return;
     if (NUM_KEYS.includes(k)) {
       const n = Number(s[k]);
-      if (Number.isFinite(n) && n > 0) out[k] = k === 'scale' ? Math.min(3, Math.max(0.5, n)) : n;
+      if (Number.isFinite(n) && n > 0) out[k] = clampSetting(k, n);
     } else if (typeof s[k] === 'boolean') out[k] = s[k];
   });
   return out;
@@ -103,7 +112,18 @@ function migratePet(saved, s) {
   return p;
 }
 
+let dirReady = false, saveTimer = null;
+// tmp + fsync + rename: файл целый и после падения процесса, и после выключения питания
+function writeStore(text) {
+  if (!dirReady) { fs.mkdirSync(path.dirname(storePath()), { recursive: true }); dirReady = true; }
+  const tmp = storePath() + '.tmp';
+  const fd = fs.openSync(tmp, 'w', 0o600);
+  try { fs.writeSync(fd, text); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+  fs.renameSync(tmp, storePath());
+}
+
 function save() {
+  clearTimeout(saveTimer); saveTimer = null;
   if (!pet) return;
   const data = {
     settings,
@@ -111,18 +131,21 @@ function save() {
     achievements: achievements && achievements.serialize ? achievements.serialize() : store.achievements || null,
     onboarded,
     pos: win && !win.isDestroyed() ? win.getPosition() : store.pos,
-    hidden,
+    hidden: film && film.wasHidden ? true : hidden,   // съёмка показывает жабу лишь на время
     moveDeclined: !!store.moveDeclined,
   };
   try {
-    fs.mkdirSync(path.dirname(storePath()), { recursive: true });
-    const tmp = storePath() + '.tmp';
-    fs.writeFileSync(tmp, JSON.stringify(data));
-    fs.renameSync(tmp, storePath());
+    writeStore(JSON.stringify(data));
     store = data;
   } catch (e) {
+    dirReady = false;
     console.error('save failed', e);
   }
+}
+
+// Частые действия (тыки, перетаскивания, ачивки) — одна запись на пачку
+function saveSoon() {
+  if (!saveTimer) saveTimer = setTimeout(save, 1000);
 }
 
 function makeAchievements(saved) {
@@ -157,8 +180,33 @@ function validPos(pos, w, h) {
   return ok ? pos : null;
 }
 
+// окно живо и его рендер не упал (в упавший send только сыплет ошибками в stderr)
+const alive = (w) => !!w && !w.isDestroyed() && !w.webContents.isDestroyed() && !w.webContents.isCrashed();
+
 function send(channel, payload) {
-  if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
+  if (alive(win)) win.webContents.send(channel, payload);
+}
+
+// Упал рендер окна — поднимаем его заново; если падает снова и снова, не крутим цикл
+function reloadOnCrash(w, label, file) {
+  const crashes = [];
+  w.webContents.on('render-process-gone', (_e, d) => {
+    if (quitting || w.isDestroyed()) return;
+    const now = Date.now();
+    crashes.push(now);
+    while (now - crashes[0] > 60 * 1000) crashes.shift();
+    console.error(`окно ${label}: рендер упал (${d && d.reason}), ${crashes.length > 3 ? 'больше не поднимаем' : 'перезагружаем'}`);
+    if (crashes.length > 3) return;
+    setTimeout(() => { if (!quitting && !w.isDestroyed()) w.loadFile(file); }, 500);
+  });
+}
+
+// Окно целиком в рабочей области своего экрана
+function clampToScreen(b) {
+  const a = screen.getDisplayMatching(b).workArea;
+  const x = Math.min(Math.max(b.x, a.x), a.x + a.width - b.width);
+  const y = Math.min(Math.max(b.y, a.y), a.y + a.height - b.height);
+  return { x: Math.round(x), y: Math.round(y), width: b.width, height: b.height };
 }
 
 function createWindow() {
@@ -178,7 +226,11 @@ function createWindow() {
   // skipTransformProcessType: без него на macOS окна и Dock моргают при смене типа процесса
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
   win.setIgnoreMouseEvents(true, { forward: true });
-  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  // спрятанная жаба не рисует: с throttling Chromium останавливает rAF у скрытого окна
+  if (hidden) win.webContents.setBackgroundThrottling(true);
+  const page = path.join(__dirname, 'renderer', 'index.html');
+  win.loadFile(page);
+  reloadOnCrash(win, 'жабы', page);
   win.webContents.on('did-finish-load', () => {
     win.webContents.setZoomFactor(settings.scale);
     send('settings', settings);
@@ -202,15 +254,25 @@ function applyScale() {
   if (!win) return;
   const [w, h] = size();
   const b = win.getBounds();
-  // растём вверх-влево, чтобы жаба оставалась на том же месте у края экрана
-  win.setBounds({ x: b.x + b.width - w, y: b.y + b.height - h, width: w, height: h });
+  // растём вверх-влево, чтобы жаба оставалась на том же месте у края экрана, но не за краем
+  const nb = clampToScreen({ x: b.x + b.width - w, y: b.y + b.height - h, width: w, height: h });
+  // идёт перетаскивание: сдвигаем и его якорь, иначе таймер moveDrag вернёт окно на старое место
+  if (drag) { drag.wx += nb.x - b.x; drag.wy += nb.y - b.y; }
+  win.setBounds(nb);
   win.webContents.setZoomFactor(settings.scale);
+}
+
+function showWin(v) {
+  if (!win) return;
+  win.webContents.setBackgroundThrottling(!v);
+  if (v) win.showInactive(); else win.hide();
 }
 
 function setHidden(v) {
   hidden = v;
+  if (film) film.wasHidden = v;   // во время съёмки — что вернуть после неё
   if (!win) return;
-  if (hidden) win.hide(); else win.showInactive();
+  showWin(!hidden);
   rebuildMenu(true);
   save();
 }
@@ -227,9 +289,11 @@ function focusApp() {
 }
 
 function openWindow(name) {
-  const cfg = APP_WINDOWS[name];
+  const cfg = Object.prototype.hasOwnProperty.call(APP_WINDOWS, name) ? APP_WINDOWS[name] : null;
   if (!cfg) return null;
   const old = appWins[name];
+  // рендер упал и не поднялся — пустое окно не показываем, создаём новое
+  if (old && !old.isDestroyed() && old.webContents.isCrashed()) old.destroy();
   if (old && !old.isDestroyed()) {
     if (old.isMinimized()) old.restore();
     old.show();
@@ -251,6 +315,7 @@ function openWindow(name) {
   });
   w.removeMenu();
   w.loadFile(file);
+  reloadOnCrash(w, name, file);
   w.once('ready-to-show', () => { w.show(); focusApp(); w.focus(); });
   w.on('closed', () => { if (appWins[name] === w) delete appWins[name]; });
   appWins[name] = w;
@@ -274,7 +339,7 @@ function appData() {
 }
 
 function pushApp() {
-  const open = Object.values(appWins).filter((w) => w && !w.isDestroyed());
+  const open = Object.values(appWins).filter(alive);
   if (!open.length) return;
   const data = appData();
   open.forEach((w) => w.webContents.send('app:update', data));
@@ -289,20 +354,28 @@ function notify(title, body, force) {
   n.show();
 }
 
-function age(min) {
-  min = Math.round(min || 0);
-  if (min < 60) return `${min} мин`;
-  if (min < 48 * 60) return `${Math.floor(min / 60)} ч ${min % 60} мин`;
-  return `${Math.floor(min / 1440)} дн`;
-}
+// длительности — одним форматтером с core (реплики, кладбище, трофеи)
+const age = (min) => Core.fmtDur(min);
+
+// Таймеры воды и разминки повторяются каждый своё nagEvery, и вместе выходит чаще.
+// Громко («ква» и уведомление) — не чаще раза в nagEvery; остальные напоминания тихие (quiet)
+let lastNagAt = -Infinity;
 
 function handleEvent(ev) {
+  if (ev.type === 'remind' && !film) {
+    const now = Date.now();
+    if (now - lastNagAt < settings.nagEvery * 60 * 1000 - 1500) ev = Object.assign({}, ev, { quiet: true });
+    else lastNagAt = now;
+  }
   send('event', ev);
   if (film) return;
   if (ev.type === 'remind') {
     // Системное уведомление — если жаба спрятана или её игнорируют
-    if (hidden || ev.nag >= 2) {
-      notify(ev.kind === 'water' ? '💧 Пора попить воды' : '🤸 Пора размяться', ev.tip ? ev.text + '\n' + ev.tip : ev.text);
+    if (!ev.quiet && (hidden || ev.nag >= 2)) {
+      const v = pet.view(Date.now());
+      const both = v.needs && v.needs.water && v.needs.move;
+      const title = both ? '💧🤸 Пора попить и размяться' : ev.kind === 'water' ? '💧 Пора попить воды' : '🤸 Пора размяться';
+      notify(title, ev.tip ? ev.text + '\n' + ev.tip : ev.text);
     }
   } else if (ev.type === 'morning' && hidden) {
     notify('🐸 Доброе утро', ev.text);
@@ -337,17 +410,28 @@ function checkAchievements(events) {
     send('event', Object.assign({ type: 'achievement' }, a));
     if (a.kind === 'bad' || (a.rarity && a.rarity !== 'common')) loud.push(a);
   });
-  // Системные уведомления: при смерти хватит уведомления о смерти (ачивки видны тостами),
-  // несколько ачивок разом — одним уведомлением, а не пачкой
+  // Системные уведомления: при смерти хватит уведомления о смерти (ачивки видны тостами)
   const died = (events || []).some((e) => e && e.type === 'death');
-  if (!died && loud.length === 1) {
+  if (!died && loud.length && !film) queueAchNote(loud);
+  if (fresh.length) { if (!film) saveSoon(); pushApp(); }
+  return fresh;
+}
+
+// Несколько ачивок подряд (в одном шаге или пачкой быстрых действий) — одним уведомлением
+let achNote = null;
+function queueAchNote(list) {
+  if (!achNote) achNote = { list: [], timer: setTimeout(flushAchNote, 1500) };
+  achNote.list.push(...list);
+}
+function flushAchNote() {
+  const loud = achNote ? achNote.list : [];
+  achNote = null;
+  if (loud.length === 1) {
     const a = loud[0];
     notify(a.kind === 'bad' ? `🤡 Позорная ачивка: ${a.title}` : `🏆 ${a.title}`, `${a.icon || ''} ${a.desc || ''}`.trim());
-  } else if (!died && loud.length > 1) {
+  } else if (loud.length > 1) {
     notify(`🏆 Новые ачивки: ${loud.length}`, loud.map((a) => `${a.icon || ''} ${a.title}`.trim()).join('\n'));
   }
-  if (fresh.length) { if (!film) save(); pushApp(); }
-  return fresh;
 }
 
 function act(type, opts = {}) {
@@ -363,10 +447,16 @@ function act(type, opts = {}) {
   if (type === 'drink') ev = p.drink(now);
   else if (type === 'stretch') ev = p.stretch(now);
   else if (type === 'snooze') {
-    p.snooze(opts.kind, now, opts.minutes || curSettings().nagEvery);
+    if (opts.kind !== 'water' && opts.kind !== 'move') return;
+    const m = Number(opts.minutes);
+    p.snooze(opts.kind, now, Number.isFinite(m) && m > 0 ? Math.min(m, MAX_PAUSE_MIN) : curSettings().nagEvery);
     extra.push({ type: 'snooze', kind: opts.kind });
   } else if (type === 'poke') ev = p.poke();
-  else if (type === 'pause') ev = p.pause(now, opts.minutes || 0);
+  else if (type === 'pause') {
+    const m = Number(opts.minutes || 0);
+    if (!Number.isFinite(m) || m < 0) return;
+    ev = p.pause(now, Math.min(m, MAX_PAUSE_MIN));
+  }
   else if (type === 'revive') {
     // только мёртвую: двойной клик по «🥚» не должен плодить поколения
     if (typeof p.revive === 'function' && p.view(now).life === 'dead') ev = p.revive(now);
@@ -379,7 +469,7 @@ function act(type, opts = {}) {
   if (ev) handleEvent(ev);
   checkAchievements((ev ? [ev] : []).concat(extra));
   send('view', p.view(now));
-  if (!film) { rebuildMenu(true); save(); }
+  if (!film) { rebuildMenu(true); saveSoon(); }
   pushApp();
 }
 
@@ -401,14 +491,18 @@ function tick() {
 }
 
 let lastCursor = { key: '', at: 0 };
+const NEAR = 120;   // px вокруг окна: здесь нужны наведение и плавный взгляд
 function sendCursor() {
   if (!win || hidden || !win.isVisible()) return;
   const p = screen.getCursorScreenPoint();
   const b = win.getBounds();
-  // мышь стоит на месте — шлём редко (рендеру нужно лишь погасить наведение)
+  const near = p.x > b.x - NEAR && p.x < b.x + b.width + NEAR && p.y > b.y - NEAR && p.y < b.y + b.height + NEAR;
+  // мышь стоит на месте — шлём редко (рендеру нужно лишь погасить наведение);
+  // мышь далеко от жабы — глазам хватит 4 раз в секунду, а не 20
   const key = `${p.x},${p.y},${b.x},${b.y}`, now = Date.now();
-  if (key === lastCursor.key && now - lastCursor.at < 500) return;
-  lastCursor = { key, at: now };
+  if (key === lastCursor.key && now - lastCursor.at < (near ? 500 : 2000)) return;
+  if (!near && now - lastCursor.at < 250) return;
+  lastCursor = { key, at: now, near };
   send('cursor', { x: (p.x - b.x) / settings.scale, y: (p.y - b.y) / settings.scale });
 }
 
@@ -420,6 +514,7 @@ function moveDrag() {
 
 // ---------- режим съёмки ----------
 const FILM_STEP = 20 * 1000;
+const seeded = (seed) => () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
 
 function filmSettings() {
   // тайминги по умолчанию, чтобы сценарии шли как задумано; внешний вид — как у пользователя
@@ -429,7 +524,8 @@ function filmSettings() {
 function filmReset() {
   if (!film) return;
   film.settings = filmSettings();
-  film.pet = Core.createPet(null, film.settings, film.now);
+  // свой генератор с постоянным зерном (как в demo.js): реплики в дубле одни и те же
+  film.pet = Core.createPet(null, film.settings, film.now, seeded(1017));
   film.pet.tick(film.now, 0);
   film.A = makeAchievements(null);
   send('view', film.pet.view(film.now));
@@ -459,6 +555,8 @@ const filmCtl = {
   action(type, opts) { if (film) act(type, opts || {}); },
   say(text) { send('event', { type: 'say', text }); },
   event(ev) { if (ev && ev.type) send('event', ev); },
+  // титр поверх сцены (хук, CTA); пустой текст — убрать. Рисует окно жабы
+  caption(text) { send('event', { type: 'caption', text: String(text || '') }); },
 };
 
 function startFilm(name) {
@@ -468,9 +566,10 @@ function startFilm(name) {
     return;
   }
   stopFilm(true);
-  film = { name, now: Date.now(), pet: null, A: null, settings: null, director: null };
+  // спрятанную жабу показываем только на время съёмки
+  film = { name, now: Date.now(), pet: null, A: null, settings: null, director: null, wasHidden: hidden };
   filmReset();
-  if (hidden) { hidden = false; if (win) win.showInactive(); }
+  if (hidden) { hidden = false; showWin(true); }
   try {
     const d = Showcase.createDirector(S[name], filmCtl);
     film.director = d;
@@ -481,24 +580,27 @@ function startFilm(name) {
     stopFilm();
     return;
   }
+  updateTray();
   rebuildMenu(true);
 }
 
 function stopFilm(silent) {
   if (!film) return;
-  const d = film.director;
+  const d = film.director, wasHidden = film.wasHidden;
   film = null;
   try { if (d && typeof d.stop === 'function') d.stop(); } catch (e) { console.error('showcase stop', e); }
-  if (silent) return;
+  if (silent) { if (wasHidden) hidden = true; return; }
   // возвращаем реальную жабу
   send('event', { type: 'filmEnd' });
   send('view', pet.view(Date.now()));
+  if (wasHidden) setHidden(true);
   updateTray();
   rebuildMenu(true);
   pushApp();
 }
 
 // ---------- меню-бар ----------
+const fmtMin = (m) => Core.fmtDur(m);
 function trayImage() {
   const img = nativeImage.createFromPath(path.join(__dirname, 'assets', 'trayTemplate.png'));
   img.setTemplateImage(true);
@@ -519,9 +621,15 @@ function updateTray() {
     if (title) title = ' ' + title;
   }
   tray.setTitle(title);
-  tray.setToolTip(v.life === 'dead'
-    ? `Жабка #${v.generation || 1} покинула чат. Высиди новую в меню 🥚`
-    : `Жабка — вода через ${v.waterLeftMin} мин, разминка через ${v.moveLeftMin} мин`);
+  const soon = (m) => fmtMin(Math.max(1, m));
+  let tip;
+  if (v.life === 'dead') tip = `Жабка #${v.generation || 1} покинула чат. Высиди новую в меню 🥚`;
+  else if (v.paused) tip = `Жабка на паузе ещё ${soon(v.pausedLeftMin)}`;
+  else {
+    tip = `Жабка — ${v.needs.water ? 'пора пить воду' : `вода через ${soon(v.waterLeftMin)}`}, `
+      + `${v.needs.move ? 'пора размяться' : `разминка через ${soon(v.moveLeftMin)}`}`;
+  }
+  tray.setToolTip(tip);
   rebuildMenu(false);
 }
 
@@ -530,7 +638,7 @@ function setSetting(key, val) {
   if (NUM_KEYS.includes(key)) {
     val = Number(val);
     if (!Number.isFinite(val) || val <= 0) return;
-    if (key === 'scale') val = Math.min(3, Math.max(0.5, val));
+    val = clampSetting(key, val);
   } else val = !!val;
   settings[key] = val;
   pet.setSettings(settings);
@@ -593,7 +701,8 @@ function setAppMenu() {
 function filmMenu() {
   const S = (Showcase && Showcase.SCRIPTS) || {};
   const items = Object.keys(S).map((k) => ({
-    label: `${S[k].title || k}${S[k].duration ? ` (~${Math.round(S[k].duration)} с)` : ''}`,
+    // длительность дописываем, только если её нет в названии
+    label: `${S[k].title || k}${S[k].duration && !/~\d+\s*с\)/.test(S[k].title || '') ? ` (~${Math.round(S[k].duration)} с)` : ''}`,
     type: 'radio', checked: !!film && film.name === k,
     click: () => startFilm(k),
   }));
@@ -610,7 +719,7 @@ function rebuildMenu(force) {
   const stamp = [v.waterLeftMin, v.moveLeftMin, v.sitMin, v.paused, v.pausedLeftMin, v.day.drinks, v.day.breaks, hidden, v.life, !!film].join('|');
   if (!force && stamp === menuStamp) return;
   menuStamp = stamp;
-  const min = (m) => (m < 60 ? `${m} мин` : `${Math.floor(m / 60)} ч ${m % 60 ? (m % 60) + ' мин' : ''}`.trim());
+  const min = fmtMin;
   const status = dead
     ? [
       { label: `💀 Жабка #${v.generation || 1} ${v.cause === 'stone' ? 'окаменела' : 'засохла'}`, enabled: false },
@@ -643,46 +752,69 @@ function rebuildMenu(force) {
     { type: 'separator' },
     { label: 'Выйти', role: 'quit' },
   ];
-  // действия «попил/размялся» в меню всегда про реальную жабу
-  if (film) template.forEach((i) => { if (i.click && /попил|размялся|Пауза|Снять паузу/.test(i.label)) i.enabled = false; });
+  // действия «попил/размялся/высидеть» в меню всегда про реальную жабу, а act на съёмке — про съёмочную
+  if (film) template.forEach((i) => { if (i.click && /попил|размялся|Пауза|Снять паузу|Высидеть/.test(i.label)) i.enabled = false; });
   tray.setContextMenu(Menu.buildFromTemplate(template));
 }
 
+// ---------- IPC: проверка отправителя ----------
+// Сообщение принимаем только из главного фрейма своих окон, открытых на своих страницах
+const RENDERER_URL = pathToFileURL(path.join(__dirname, 'renderer') + path.sep).href;
+function from(e, kind) {
+  try {
+    const f = e && e.senderFrame;
+    if (!f || f.parent || !String(f.url).startsWith(RENDERER_URL)) return false;
+    const w = BrowserWindow.fromWebContents(e.sender);
+    if (!w) return false;
+    return kind === 'pet' ? w === win : Object.values(appWins).includes(w);
+  } catch { return false; }
+}
+const pet$ = (fn) => (e, ...a) => (from(e, 'pet') ? fn(e, ...a) : undefined);
+const app$ = (fn) => (e, ...a) => (from(e, 'app') ? fn(e, ...a) : undefined);
+
 // ---------- IPC: окно жабы ----------
-ipcMain.on('action', (_e, msg) => act(msg && msg.type, msg || {}));
-ipcMain.on('ignore', (_e, v) => { if (win && !drag) win.setIgnoreMouseEvents(!!v, { forward: true }); });
-ipcMain.on('drag-start', () => {
+ipcMain.on('action', pet$((_e, msg) => act(msg && msg.type, msg || {})));
+ipcMain.on('ignore', pet$((_e, v) => { if (win && !drag) win.setIgnoreMouseEvents(!!v, { forward: true }); }));
+ipcMain.on('drag-start', pet$(() => {
   if (!win) return;
   const p = screen.getCursorScreenPoint();
   const [wx, wy] = win.getPosition();
   clearInterval(drag && drag.timer);
   drag = { cx: p.x, cy: p.y, wx, wy, timer: setInterval(moveDrag, 16) };
-});
-ipcMain.on('drag-end', () => {
+}));
+ipcMain.on('drag-end', pet$(() => {
   if (!drag) return;
   clearInterval(drag.timer);
   const moved = win && (() => { const [x, y] = win.getPosition(); return Math.abs(x - drag.wx) + Math.abs(y - drag.wy) > 4; })();
   drag = null;
   if (moved) act('dragged');
-  else save();
-});
-ipcMain.handle('init', () => ({ settings, view: curPet().view(curNow()) }));
+  else saveSoon();
+}));
+ipcMain.handle('init', pet$(() => ({ settings, view: curPet().view(curNow()) })));
 
 // ---------- IPC: окна приложения (preload-app.js) ----------
-ipcMain.handle('app:get', () => appData());
-ipcMain.on('app:set', (_e, key, value) => setSetting(key, value));
-ipcMain.on('app:action', (_e, msg) => act(msg && msg.type, msg || {}));
-ipcMain.on('app:open', (_e, name) => openWindow(name));
-ipcMain.on('app:onboarded', (e) => {
+ipcMain.handle('app:get', app$(() => appData()));
+ipcMain.on('app:set', app$((_e, key, value) => setSetting(key, value)));
+ipcMain.on('app:action', app$((_e, msg) => act(msg && msg.type, msg || {})));
+ipcMain.on('app:open', app$((_e, name) => openWindow(name)));
+ipcMain.on('app:onboarded', app$((e) => {
   onboarded = true;
   save();
   const w = BrowserWindow.fromWebContents(e.sender);
   if (w && w === appWins.welcome) w.close();
   pushApp();
-});
-ipcMain.on('app:close', (e) => {
+}));
+ipcMain.on('app:close', app$((e) => {
   const w = BrowserWindow.fromWebContents(e.sender);
   if (w && w !== win) w.close();
+}));
+
+// ---------- окна не уходят со своих страниц ----------
+// Брошенный файл или ссылка не уводит окно (а с ним и preload-мост) на чужую страницу; новых окон нет
+app.on('web-contents-created', (_e, wc) => {
+  wc.on('will-navigate', (e) => e.preventDefault());
+  wc.on('will-attach-webview', (e) => e.preventDefault());
+  wc.setWindowOpenHandler(() => ({ action: 'deny' }));
 });
 
 // ---------- запуск ----------
@@ -691,6 +823,9 @@ app.on('second-instance', () => setHidden(false));
 app.whenReady().then(() => {
   if (!gotLock) return;
   if (process.platform === 'darwin' && app.dock) app.dock.hide();
+  // веб-разрешения (камера, микрофон, гео, уведомления рендера) Жабке не нужны
+  session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+  session.defaultSession.setPermissionCheckHandler(() => false);
 
   store = load();
   const firstRun = !store.settings;
@@ -719,10 +854,10 @@ app.whenReady().then(() => {
   });
 
   // Онбординг при первом запуске
-  if ((firstRun || !onboarded) && !process.env.FROG_SNAPSHOT && !process.env.FROG_SHOWCASE) {
+  if ((firstRun || !onboarded) && !devEnv('FROG_SNAPSHOT') && !process.env.FROG_SHOWCASE) {
     setTimeout(() => openWindow('welcome'), 600);
   }
-  if (!process.env.FROG_SNAPSHOT && !process.env.FROG_SHOWCASE && !process.env.FROG_TEST_SCRIPT) {
+  if (!devEnv('FROG_SNAPSHOT') && !process.env.FROG_SHOWCASE && !devEnv('FROG_TEST_SCRIPT')) {
     setTimeout(offerMoveToApplications, 1500);
   }
 
@@ -733,8 +868,8 @@ app.whenReady().then(() => {
 
   // FROG_SHOWCASE + FROG_SNAPSHOT=/path.png — кадры окна жабы каждые FROG_SNAPSHOT_EVERY с
   // (по умолчанию 3) в /path-NN.png, выход после конца сценария (проверка режима съёмки)
-  if (process.env.FROG_SNAPSHOT && process.env.FROG_SHOWCASE) {
-    const every = (Number(process.env.FROG_SNAPSHOT_EVERY) || 3) * 1000;
+  if (devEnv('FROG_SNAPSHOT') && process.env.FROG_SHOWCASE) {
+    const every = (Number(devEnv('FROG_SNAPSHOT_EVERY')) || 3) * 1000;
     let n = 0, seen = false;
     const shot = setInterval(async () => {
       if (film) seen = true;
@@ -742,24 +877,24 @@ app.whenReady().then(() => {
       if (!win || !film) return;
       try {
         const img = await win.webContents.capturePage();
-        fs.writeFileSync(process.env.FROG_SNAPSHOT.replace(/\.png$/, `-${String(++n).padStart(2, '0')}.png`), img.toPNG());
+        fs.writeFileSync(devEnv('FROG_SNAPSHOT').replace(/\.png$/, `-${String(++n).padStart(2, '0')}.png`), img.toPNG());
       } catch (e) { console.error('snapshot', e); }
     }, every);
-  } else if (process.env.FROG_SNAPSHOT) {
+  } else if (devEnv('FROG_SNAPSHOT')) {
     // FROG_SNAPSHOT=/path.png — снимок окна, тык, окна приложения и выход (для проверки сборки)
     setTimeout(async () => {
       const img = await win.webContents.capturePage();
-      fs.writeFileSync(process.env.FROG_SNAPSHOT, img.toPNG());
+      fs.writeFileSync(devEnv('FROG_SNAPSHOT'), img.toPNG());
       act('poke');
       setTimeout(async () => {
-        fs.writeFileSync(process.env.FROG_SNAPSHOT.replace(/\.png$/, '-poke.png'), (await win.webContents.capturePage()).toPNG());
+        fs.writeFileSync(devEnv('FROG_SNAPSHOT').replace(/\.png$/, '-poke.png'), (await win.webContents.capturePage()).toPNG());
         // проверка окон приложения: открыть и снять, если файлы уже есть
         for (const name of Object.keys(APP_WINDOWS)) {
           const w = openWindow(name);
           if (!w) continue;
           await new Promise((r) => setTimeout(r, 1200));
           try {
-            fs.writeFileSync(process.env.FROG_SNAPSHOT.replace(/\.png$/, `-${name}.png`), (await w.webContents.capturePage()).toPNG());
+            fs.writeFileSync(devEnv('FROG_SNAPSHOT').replace(/\.png$/, `-${name}.png`), (await w.webContents.capturePage()).toPNG());
           } catch (e) { console.error(`snapshot ${name}`, e); }
         }
         app.quit();
@@ -768,7 +903,7 @@ app.whenReady().then(() => {
   }
 
   // FROG_TEST_SCRIPT=/path.js — автотест: module.exports = (api) => {...}, выполняется в main после загрузки окна жабы
-  if (process.env.FROG_TEST_SCRIPT) {
+  if (devEnv('FROG_TEST_SCRIPT')) {
     win.webContents.once('did-finish-load', () => {
       const api = {
         act, setSetting, openWindow, startFilm, stopFilm, save, load, storePath, appData, updateTray, rebuildMenu,
@@ -777,7 +912,7 @@ app.whenReady().then(() => {
         get achievements() { return achievements; }, get film() { return film; }, get settings() { return settings; },
         get hidden() { return hidden; }, get onboarded() { return onboarded; }, ipcMain,
       };
-      Promise.resolve().then(() => require(path.resolve(process.env.FROG_TEST_SCRIPT))(api))
+      Promise.resolve().then(() => require(path.resolve(devEnv('FROG_TEST_SCRIPT')))(api))
         .catch((e) => { console.error('[test] FAIL', e); app.exit(1); });
     });
   }
