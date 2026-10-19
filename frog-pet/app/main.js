@@ -171,9 +171,12 @@ function sendCursor() {
   const p = screen.getCursorScreenPoint();
   const b = win.getBounds();
   send('cursor', { x: (p.x - b.x) / settings.scale, y: (p.y - b.y) / settings.scale });
-  if (drag) {
-    win.setPosition(Math.round(drag.wx + p.x - drag.cx), Math.round(drag.wy + p.y - drag.cy));
-  }
+}
+
+function moveDrag() {
+  if (!drag || !win) return;
+  const p = screen.getCursorScreenPoint();
+  win.setPosition(Math.round(drag.wx + p.x - drag.cx), Math.round(drag.wy + p.y - drag.cy));
 }
 
 // ---------- меню-бар ----------
@@ -275,9 +278,14 @@ ipcMain.on('drag-start', () => {
   if (!win) return;
   const p = screen.getCursorScreenPoint();
   const [wx, wy] = win.getPosition();
-  drag = { cx: p.x, cy: p.y, wx, wy };
+  clearInterval(drag && drag.timer);
+  drag = { cx: p.x, cy: p.y, wx, wy, timer: setInterval(moveDrag, 16) };
 });
-ipcMain.on('drag-end', () => { drag = null; save(); });
+ipcMain.on('drag-end', () => {
+  if (drag) clearInterval(drag.timer);
+  drag = null;
+  save();
+});
 ipcMain.handle('init', () => ({ settings, view: pet.view(Date.now()) }));
 
 // ---------- запуск ----------

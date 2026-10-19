@@ -2,8 +2,9 @@ name: Жабка — сборка для macOS
 
 on:
   push:
-    paths: ['frog-pet/**', '.github/workflows/frog-pet.yml']
+    branches: ['**']
     tags: ['frog-v*']
+    paths: ['frog-pet/**', '.github/workflows/frog-pet.yml']
   workflow_dispatch:
 
 permissions:

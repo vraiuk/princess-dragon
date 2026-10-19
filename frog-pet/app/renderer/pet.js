@@ -813,6 +813,11 @@
     else bridge.action('poke');
     trackPointer(...local(e));
   });
+  cv.addEventListener('pointercancel', () => {
+    if (drag && drag.moved) bridge.dragEnd();
+    drag = null;
+    cv.classList.remove('dragging');
+  });
   document.addEventListener('mousemove', (e) => trackPointer(...local(e)));
   document.addEventListener('mouseleave', () => setHover(false));
   // курсор приходит из main даже когда окно пропускает мышь насквозь
