@@ -224,7 +224,11 @@
     try {
       fresh = ach.check({ now: simNow, events: events || [], view: pet.view(simNow), state: pet.serialize(), settings }) || [];
     } catch (e) { console.warn('achievements.check', e); return; }
-    fresh.forEach((a) => emit('event', Object.assign({ type: 'achievement' }, a)));
+    const script = director && director.script;
+    fresh.forEach((a) => {
+      if (script && Show.showAchievement && !Show.showAchievement(script, a)) return;
+      emit('event', Object.assign({ type: 'achievement' }, a));
+    });
   }
 
   // Шаг симуляции; события копятся для ачивок
@@ -313,7 +317,7 @@
     else if (type === 'snooze') { pet.snooze(opts.kind, simNow, opts.minutes); extra.push({ type: 'snooze', kind: opts.kind }); }
     else if (type === 'poke') ev = pet.poke();
     else if (type === 'pause' && pet.pause) ev = pet.pause(simNow, opts.minutes || 0);
-    else if (type === 'revive') { if (pet.revive) ev = pet.revive(simNow); }
+    else if (type === 'revive') { if (pet.revive && pet.view(simNow).life === 'dead') ev = pet.revive(simNow); else return; }
     else if (type === 'dragged') extra.push({ type: 'dragged' });
     else if (type === 'openTrophies' || type === 'openSettings') {
       const what = type === 'openTrophies' ? '«🏆 Трофеи и статистика»: ачивки, графики и кладбище жаб' : '«⚙️ Настройки»: тайминги, звук и хардкор со смертью';

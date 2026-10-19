@@ -678,6 +678,7 @@
       st = { kind: 'egg', t0: t, info, flags: {} };
     },
     reset() { sweep(); mode = 'none'; st = null; tomb = null; },
+    stats() { return { parts: parts.length, pieces: pieces.length, heap: heap.length, tomb: !!tomb }; },
     info() { return tomb ? { generation: tomb.gen, cause: tomb.cause, ageMin: tomb.ageMin, text: tomb.info && tomb.info.text } : null; },
     fmtAge,
     // клик по надгробию — оно покачивается

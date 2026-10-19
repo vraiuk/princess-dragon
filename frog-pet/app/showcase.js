@@ -30,6 +30,8 @@
       title: 'Шортс: жаба умирает дважды (~58 с)',
       ratio: '9:16',
       duration: 58,
+      // в кадре только ачивки из титров — остальные копятся молча, чтобы тосты не закрывали облачка
+      achievements: ['raisin', 'jade', 'iron_butt'],
       steps: [
         reset(0),
         cap(0.2, 'Моя жаба умирает, если я не пью воду 💀'),
@@ -52,10 +54,10 @@
         ff(39.6, 25, 2.6, { hold: 'water' }),           // смерть на ~42.1 с: трещины → камушки → пыль
         cap(42.6, 'рассыпалась на камушки 🪨'),
         cap(46.0, '+ «Нефритовая жаба» и «Железножопая жаба» 🏆'),
-        act(49.0, 'revive'),
-        act(51.8, 'drink'),
+        act(48.6, 'revive'),                            // яйцо → головастик → жаба к ~54.3 с
         cap(53.4, 'Жабка для macOS. Попей воды 💧'),
-        say(55.4, 'Вода — лучший рефакторинг 💧🐸'),
+        act(54.6, 'drink'),                             // пьёт уже вылупившаяся жаба
+        say(56.8, 'Вода — лучший рефакторинг 💧🐸'),
       ],
     },
 
@@ -197,6 +199,12 @@
     return true;
   }
 
+  // Показывать ли тост ачивки во время сценария (script.achievements — белый список id)
+  function showAchievement(script, a) {
+    const only = script && script.achievements;
+    return !Array.isArray(only) || !!(a && only.indexOf(a.id) >= 0);
+  }
+
   // ctl: { reset, ff(minutes, idleSec), action(type, opts), say(text), event(ev), caption?(text) }
   // opts.timers — подмена setTimeout/clearTimeout/now (для тестов)
   function createDirector(script, ctl, opts) {
@@ -251,5 +259,5 @@
     };
   }
 
-  return { SCRIPTS, createDirector, expand, run, quiet, HOLD, FF_DT };
+  return { SCRIPTS, createDirector, expand, run, quiet, showAchievement, HOLD, FF_DT };
 });

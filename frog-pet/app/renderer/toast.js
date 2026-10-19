@@ -4,6 +4,7 @@
   'use strict';
 
   const DUR = 3500;          // сколько висит один тост, мс
+  const DUR_BUSY = 2400;     // если в очереди есть ещё
   const OUT = 320;           // анимация ухода, мс
   const RIBBON = { good: 'Ачивка получена!', bad: 'Позорная ачивка', secret: 'Секретная ачивка!' };
   const RAR = { common: 'обычная', rare: 'редкая', epic: 'эпик', legendary: 'легенда' };
@@ -62,12 +63,14 @@
     busy = true;
     mount();
     const { kind, rarity } = render(a);
+    const dur = queue.length ? DUR_BUSY : DUR;   // очередь — показываем бодрее, чтобы не отставать от событий
+    el.style.setProperty('--dur', dur + 'ms');
     void el.offsetWidth;            // перезапуск анимаций
     el.classList.add('show');
     burst(kind, rarity);
     play(kind, rarity);
     clearTimeout(timer);
-    timer = setTimeout(dismiss, DUR);
+    timer = setTimeout(dismiss, dur);
   }
 
   function dismiss() {

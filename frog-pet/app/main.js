@@ -37,6 +37,21 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 }
 
+// FROG_DEBUG=1 — ошибки и предупреждения из всех окон (рендер) в stderr main-процесса
+if (process.env.FROG_DEBUG) {
+  app.on('web-contents-created', (_e, wc) => {
+    wc.on('console-message', (ev) => {
+      // Electron 38: детали в объекте события; level — 'info' | 'warning' | 'error' | 'debug'
+      const level = ev.level, msg = ev.message;
+      if (level === 'error' || level === 'warning' || level === 2 || level === 3) {
+        console.error(`[renderer ${level}] ${msg} (${ev.sourceId || ''}:${ev.lineNumber || ''})`);
+      }
+    });
+    wc.on('render-process-gone', (_ev, d) => console.error('[renderer gone]', d && d.reason));
+    wc.on('preload-error', (_ev, p, err) => console.error('[preload error]', p, err));
+  });
+}
+
 // ---------- хранилище ----------
 const storePath = () => path.join(app.getPath('userData'), 'frog.json');
 
@@ -267,7 +282,9 @@ function checkAchievements(events) {
   try {
     fresh = A.check({ now, events: events || [], view: p.view(now), state: p.serialize(), settings: curSettings() }) || [];
   } catch (e) { console.error('achievements.check', e); return []; }
+  const script = film && Showcase && Showcase.SCRIPTS ? Showcase.SCRIPTS[film.name] : null;
   fresh.forEach((a) => {
+    if (script && Showcase.showAchievement && !Showcase.showAchievement(script, a)) return;
     send('event', Object.assign({ type: 'achievement' }, a));
     if (a.kind === 'bad') notify(`🤡 Позорная ачивка: ${a.title}`, `${a.icon || ''} ${a.desc || ''}`.trim());
     else if (a.rarity && a.rarity !== 'common') notify(`🏆 ${a.title}`, `${a.icon || ''} ${a.desc || ''}`.trim());
@@ -293,7 +310,11 @@ function act(type, opts = {}) {
     extra.push({ type: 'snooze', kind: opts.kind });
   } else if (type === 'poke') ev = p.poke();
   else if (type === 'pause') ev = p.pause(now, opts.minutes || 0);
-  else if (type === 'revive') { if (typeof p.revive === 'function') ev = p.revive(now); }
+  else if (type === 'revive') {
+    // только мёртвую: двойной клик по «🥚» не должен плодить поколения
+    if (typeof p.revive === 'function' && p.view(now).life === 'dead') ev = p.revive(now);
+    else return;
+  }
   else if (type === 'dragged') extra.push({ type: 'dragged' });
   else if (type === 'openTrophies') return void openWindow('trophies');
   else if (type === 'openSettings') return void openWindow('settings');
@@ -322,10 +343,15 @@ function tick() {
   if (events.length) { save(); pushApp(); }
 }
 
+let lastCursor = { key: '', at: 0 };
 function sendCursor() {
   if (!win || hidden || !win.isVisible()) return;
   const p = screen.getCursorScreenPoint();
   const b = win.getBounds();
+  // мышь стоит на месте — шлём редко (рендеру нужно лишь погасить наведение)
+  const key = `${p.x},${p.y},${b.x},${b.y}`, now = Date.now();
+  if (key === lastCursor.key && now - lastCursor.at < 500) return;
+  lastCursor = { key, at: now };
   send('cursor', { x: (p.x - b.x) / settings.scale, y: (p.y - b.y) / settings.scale });
 }
 
@@ -601,8 +627,22 @@ app.whenReady().then(() => {
     win.webContents.once('did-finish-load', () => setTimeout(() => startFilm(process.env.FROG_SHOWCASE), 800));
   }
 
-  // FROG_SNAPSHOT=/path.png — снимок окна и выход (для проверки сборки)
-  if (process.env.FROG_SNAPSHOT) {
+  // FROG_SHOWCASE + FROG_SNAPSHOT=/path.png — кадры окна жабы каждые FROG_SNAPSHOT_EVERY с
+  // (по умолчанию 3) в /path-NN.png, выход после конца сценария (проверка режима съёмки)
+  if (process.env.FROG_SNAPSHOT && process.env.FROG_SHOWCASE) {
+    const every = (Number(process.env.FROG_SNAPSHOT_EVERY) || 3) * 1000;
+    let n = 0, seen = false;
+    const shot = setInterval(async () => {
+      if (film) seen = true;
+      if (seen && !film) { clearInterval(shot); app.quit(); return; }
+      if (!win || !film) return;
+      try {
+        const img = await win.webContents.capturePage();
+        fs.writeFileSync(process.env.FROG_SNAPSHOT.replace(/\.png$/, `-${String(++n).padStart(2, '0')}.png`), img.toPNG());
+      } catch (e) { console.error('snapshot', e); }
+    }, every);
+  } else if (process.env.FROG_SNAPSHOT) {
+    // FROG_SNAPSHOT=/path.png — снимок окна, тык, окна приложения и выход (для проверки сборки)
     setTimeout(async () => {
       const img = await win.webContents.capturePage();
       fs.writeFileSync(process.env.FROG_SNAPSHOT, img.toPNG());

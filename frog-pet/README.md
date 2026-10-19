@@ -115,6 +115,8 @@ npm test           # тесты логики (node:test)
 npm run dist       # собрать .dmg/.zip (только на macOS)
 ```
 
+Отладочные переменные окружения: `FROG_DEBUG=1` — ошибки и предупреждения всех окон в stderr; `FROG_SNAPSHOT=/tmp/f.png` — снимки окна жабы, тыка и окон трофеев/настроек/приветствия, потом выход; `FROG_SHOWCASE=short` — сразу запустить сценарий съёмки (вместе с `FROG_SNAPSHOT` — кадр каждые `FROG_SNAPSHOT_EVERY` с, по умолчанию 3, и выход в конце сценария).
+
 Сборка .dmg идёт в GitHub Actions на macOS-раннере (`.github/workflows/frog-pet.yml`) при каждом изменении `frog-pet/`. Тег `frog-v*` дополнительно публикует релиз.
 
 ```

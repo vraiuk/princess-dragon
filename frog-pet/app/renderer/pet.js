@@ -117,8 +117,23 @@
     });
     const t = document.getElementById('toast');
     $bubble.className = (opts.kind || '') + (t && t.classList.contains('show') ? ' under-toast' : '');
+    fitBubble();
     bubbleKind = opts.kind || null;
     if (opts.ttl !== Infinity) bubbleTimer = setTimeout(hideBubble, opts.ttl || 6000);
+  }
+  // облачко растёт вверх от головы; если не влезает в окно 260×320 — ужимаем шрифт,
+  // режем строки, в крайнем случае опускаем его на макушку
+  const BUBBLE_BOTTOM = 214, BUBBLE_TOP_GAP = 4;
+  function fitBubble() {
+    $bubble.classList.remove('fit1', 'fit2');
+    $bubble.style.bottom = '';
+    const room = H - BUBBLE_BOTTOM - BUBBLE_TOP_GAP;
+    if ($bubble.offsetHeight <= room) return;
+    $bubble.classList.add('fit1');
+    if ($bubble.offsetHeight <= room) return;
+    $bubble.classList.add('fit2');
+    const h = $bubble.offsetHeight;
+    if (h > room) $bubble.style.bottom = Math.max(150, BUBBLE_BOTTOM - (h - room)) + 'px';
   }
   function hideBubble() {
     clearTimeout(bubbleTimer);
@@ -138,7 +153,8 @@
   function showRip() {
     const inf = (Death && Death.info()) || {};
     const cause = inf.cause === 'dry' ? 'dry' : 'stone';
-    const text = inf.text || EPITAPH[cause][(inf.generation || 1) % 3];
+    // длинная фраза о смерти не лезет над надгробием — тогда короткая эпитафия
+    const text = inf.text && inf.text.length <= 64 ? inf.text : EPITAPH[cause][(inf.generation || 1) % 3];
     // причина и срок жизни уже выбиты на надгробии — в облачке только эпитафия и кнопка
     say(text, { kind: 'dead', ttl: Infinity,
       buttons: [{ label: '🥚 Новая жаба', main: true, do: () => bridge.action('revive') }] });
@@ -816,16 +832,20 @@
   }
 
   // ---------- кадр ----------
-  let lastT = performance.now() / 1000, acc = 0;
+  let lastT = performance.now() / 1000, acc = 0, frames = 0;
   function frame() {
     requestAnimationFrame(frame);
     const t = performance.now() / 1000;
     const dt = Math.min(0.1, t - lastT);
     // ~30 fps; во сне — ещё реже, чтобы не жечь батарею
-    const step = view.activity === 'away' && !Object.keys(anim).length && alive() && !critLevel() ? 1 / 12 : 1 / 30;
+    const calm = !Object.keys(anim).length && !critLevel();
+    const step = calm && view.activity === 'away' && alive() ? 1 / 12
+      : calm && Death && Death.mode === 'dead' && !particles.length ? 1 / 20 : 1 / 30;
     acc += dt; lastT = t;
-    if (acc < step) return;
+    // допуск на дрожание rAF (60 Гц): иначе вместо 30 кадров выходит ~22
+    if (acc < step - 0.004) return;
     const fdt = acc; acc = 0;
+    frames++;
     update(t, fdt);
     render(t, fdt);
   }
@@ -959,11 +979,16 @@
     const r = $pet.getBoundingClientRect();
     const el = document.elementFromPoint(r.left + x, r.top + y);
     if (el && el !== cv && el.closest('#bubble:not(.hidden), #side:not(.hidden), #toast.show')) return true;
+    // вся зона жабы целиком, чтобы не мигало между пикселями (без чтения пикселей)
+    if (x > 56 && x < 240 && y > 80 + OY && y < FLOOR + OY + 4) return true;
+    // вне зоны — по пикселю; курсор из main приходит 20 раз в секунду, поэтому кешируем
+    const now = performance.now();
+    if (hitMemo.x === x && hitMemo.y === y && now - hitMemo.t < 250) return hitMemo.v;
     const px = ctx.getImageData(Math.floor(x * dpr), Math.floor(y * dpr), 1, 1).data;
-    if (px[3] > 24) return true;
-    // вся зона жабы целиком, чтобы не мигало между пикселями
-    return x > 56 && x < 240 && y > 80 + OY && y < FLOOR + OY + 4;
+    hitMemo = { x, y, t: now, v: px[3] > 24 };
+    return hitMemo.v;
   }
+  let hitMemo = { x: -1, y: -1, t: 0, v: false };
 
   function setHover(h) {
     if (h) { hover = true; hoverOff = 0; }
@@ -1041,6 +1066,6 @@
   window.__frogDebug = {
     event: (ev) => onEvent(ev),
     view(patch) { debugPatch = patch ? Object.assign(debugPatch || {}, patch) : null; setView(view); },
-    state: () => ({ mode: Death ? Death.mode : 'none', life: view.life, sm: Object.assign({}, sm) }),
+    state: () => ({ mode: Death ? Death.mode : 'none', life: view.life, sm: Object.assign({}, sm), particles: particles.length, frames, death: Death && Death.stats ? Death.stats() : null }),
   };
 })();
