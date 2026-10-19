@@ -1,0 +1,178 @@
+/* ---------- тост «Ачивка получена!» (A4) ----------
+   Выезжает сверху поверх облачка, морду жабы не закрывает (высота ≤ ~92px). */
+#toast {
+  position: absolute; left: 8px; right: 8px; top: 6px; z-index: 50;
+  --a: #f7c843; --b: #3fae5a; --ink: #1f2a22; --edge: #1d3b26; --glow: rgba(255, 210, 70, .55);
+  font: 13px/1.25 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", sans-serif;
+  cursor: pointer; pointer-events: none; opacity: 0;
+  transform: translateY(-120%) scale(.9); transform-origin: 50% 0;
+}
+#toast.show { pointer-events: auto; animation: toastIn .55s cubic-bezier(.25, 1.6, .45, 1) both; }
+#toast.hide { animation: toastOut .32s cubic-bezier(.5, 0, .9, .4) both; }
+@keyframes toastIn {
+  0% { opacity: 0; transform: translateY(-120%) scale(.85) rotate(-3deg); }
+  60% { opacity: 1; }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes toastOut {
+  0% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(-110%) scale(.92); }
+}
+
+#toast .card {
+  position: relative; display: flex; align-items: center; gap: 9px;
+  padding: 16px 10px 9px 8px; border-radius: 14px; overflow: hidden;
+  color: var(--ink);
+  background: linear-gradient(135deg, #fffbe6 0%, #fff3c4 45%, #e9f8de 100%);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .32), 0 0 0 2px var(--edge), inset 0 0 0 2px rgba(255, 255, 255, .7);
+}
+#toast:hover .card { filter: brightness(1.04); }
+#toast:active .card { transform: scale(.98); }
+
+/* заголовок-лента */
+#toast .ribbon {
+  position: absolute; left: 0; right: 0; top: 0; height: 15px;
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  font-size: 9.5px; font-weight: 800; line-height: 1; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap;
+  color: #fff; text-shadow: 0 1px 0 rgba(0, 0, 0, .35);
+  background: linear-gradient(90deg, var(--b), var(--a), var(--b));
+}
+#toast .ribbon .rar {
+  padding: 1px 5px; border-radius: 6px; font-size: 8px; letter-spacing: .08em;
+  background: rgba(0, 0, 0, .25);
+}
+
+/* медаль с иконкой */
+#toast .medal {
+  position: relative; flex: 0 0 46px; height: 46px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 25px; line-height: 1;
+  background: radial-gradient(circle at 35% 30%, #fffbe0 0 18%, var(--a) 55%, #c98a12 100%);
+  box-shadow: 0 0 0 2px var(--edge), 0 2px 6px rgba(0, 0, 0, .3), inset 0 -3px 0 rgba(0, 0, 0, .15);
+  animation: medalPop .7s .15s cubic-bezier(.3, 1.8, .5, 1) both;
+}
+#toast .medal .ic { position: relative; z-index: 1; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .3)); }
+@keyframes medalPop { 0% { transform: scale(0) rotate(-90deg); } 100% { transform: none; } }
+
+/* лучи за медалью */
+#toast .rays {
+  position: absolute; left: 50%; top: 50%; width: 84px; height: 84px; margin: -42px 0 0 -42px;
+  border-radius: 50%; opacity: .55; z-index: 0;
+  background: repeating-conic-gradient(var(--a) 0 10deg, transparent 10deg 30deg);
+  -webkit-mask: radial-gradient(circle, #000 30%, transparent 70%); mask: radial-gradient(circle, #000 30%, transparent 70%);
+  animation: spin 6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+#toast .body { min-width: 0; flex: 1; position: relative; z-index: 1; }
+#toast .title {
+  font-weight: 800; font-size: 14px; line-height: 1.15;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#toast .desc {
+  margin-top: 2px; font-size: 11.5px; color: rgba(31, 42, 34, .78);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+/* блик, пробегающий по карточке */
+#toast .shine {
+  position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, .85) 48%, transparent 60%);
+  transform: translateX(-120%); animation: shine 1.1s .35s ease-out both;
+}
+@keyframes shine { to { transform: translateX(120%); } }
+
+/* полоска оставшегося времени */
+#toast .timer {
+  position: absolute; left: 0; bottom: 0; height: 3px; width: 100%;
+  background: var(--b); opacity: .7; transform-origin: 0 50%;
+  animation: timer var(--dur, 3.5s) linear both;
+}
+@keyframes timer { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+/* ---------- редкость ---------- */
+#toast.r-rare .card { box-shadow: 0 6px 18px rgba(0, 0, 0, .32), 0 0 0 2px var(--edge), 0 0 12px 2px var(--glow); }
+#toast.r-epic .card { animation: glow 1.4s ease-in-out infinite; }
+#toast.r-legendary .card { animation: glow .9s ease-in-out infinite, wobble .5s .5s ease-in-out 2; }
+#toast.r-legendary .medal { animation: medalPop .7s .15s cubic-bezier(.3, 1.8, .5, 1) both, bob 1.2s .9s ease-in-out infinite; }
+#toast.r-legendary .rays { opacity: .9; width: 110px; height: 110px; margin: -55px 0 0 -55px; animation-duration: 3s; }
+#toast.r-legendary .shine { animation: shine 1.1s .35s ease-out both, shine 1.1s 1.8s ease-out both; }
+#toast.r-common .rays { display: none; }
+@keyframes glow {
+  50% { box-shadow: 0 6px 18px rgba(0, 0, 0, .32), 0 0 0 2px var(--edge), 0 0 20px 6px var(--glow); }
+}
+@keyframes wobble { 25% { transform: rotate(-2deg) scale(1.03); } 75% { transform: rotate(2deg) scale(1.03); } }
+@keyframes bob { 50% { transform: translateY(-2px) scale(1.06); } }
+
+/* ---------- позорная ачивка ---------- */
+#toast.k-bad {
+  --a: #d2486f; --b: #6b2d8f; --ink: #fff3f6; --edge: #2a0f2e; --glow: rgba(210, 60, 120, .6);
+}
+#toast.k-bad .card {
+  background:
+    linear-gradient(135deg, #5a1a4a 0%, #7d2350 50%, #4a1d6b 100%);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .4), 0 0 0 2px var(--edge), inset 0 0 0 2px rgba(255, 255, 255, .12);
+  animation: shame .45s .45s ease-in-out both;
+}
+#toast.k-bad .desc { color: rgba(255, 230, 240, .8); }
+#toast.k-bad .ribbon { background: repeating-linear-gradient(-45deg, #2a0f2e 0 6px, #b8325e 6px 12px); }
+#toast.k-bad .medal {
+  background: radial-gradient(circle at 35% 30%, #8b7a8f 0 15%, #4a3a52 60%, #241a2b 100%);
+  filter: saturate(.7);
+  animation: medalDrop .6s .15s cubic-bezier(.5, 0, .5, 1.6) both;
+}
+#toast.k-bad .rays { display: none; }
+#toast.k-bad .shine { display: none; }
+/* трещинка через всю плашку */
+#toast .crack { display: none; }
+#toast.k-bad .crack {
+  display: block; position: absolute; right: 14px; top: 0; width: 46px; height: 100%; pointer-events: none;
+  opacity: .55; stroke-dasharray: 120; stroke-dashoffset: 120; animation: crack .5s .5s ease-out forwards;
+}
+#toast .skull {
+  position: absolute; right: 6px; bottom: 4px; font-size: 20px; opacity: 0; z-index: 0;
+  filter: grayscale(.2) drop-shadow(0 1px 2px rgba(0, 0, 0, .5)); transform: rotate(-12deg);
+}
+#toast.k-bad .skull { animation: skull .5s .7s ease-out forwards; }
+#toast.k-bad .timer { background: #ff7aa8; }
+@keyframes crack { to { stroke-dashoffset: 0; } }
+@keyframes skull { from { opacity: 0; transform: scale(2) rotate(-30deg); } to { opacity: .35; transform: rotate(-12deg); } }
+@keyframes medalDrop { 0% { transform: translateY(-30px) rotate(40deg); opacity: 0; } 100% { transform: rotate(-8deg); opacity: 1; } }
+@keyframes shame {
+  20% { transform: translateX(-4px); } 40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); } 80% { transform: translateX(2px); }
+}
+#toast.k-bad.r-legendary .card,
+#toast.k-bad.r-epic .card { animation: shame .45s .45s ease-in-out both, glow 1.2s 1s ease-in-out infinite; }
+
+/* ---------- секретная (радужная) ---------- */
+#toast.k-secret { --a: #ffd84a; --b: #8a5cf6; --edge: #2b1b52; --glow: rgba(170, 120, 255, .65); }
+#toast.k-secret .card {
+  background:
+    linear-gradient(rgba(255, 255, 255, .72), rgba(255, 255, 255, .72)),
+    linear-gradient(120deg, #ff6b6b, #ffb84d, #ffe94d, #6bdc7a, #4dc3ff, #9a7bff, #ff6bd6, #ff6b6b);
+  background-size: 100% 100%, 300% 100%;
+  animation: rainbow 3s linear infinite, glow 1.6s ease-in-out infinite;
+}
+#toast.k-secret .ribbon {
+  background: linear-gradient(90deg, #ff6b6b, #ffb84d, #e8d23a, #4fc864, #3aaef0, #8a6bff, #ff5fcf, #ff6b6b);
+  background-size: 200% 100%; animation: rainbow 2s linear infinite;
+}
+#toast.k-secret .medal {
+  background: conic-gradient(from 0deg, #ff6b6b, #ffb84d, #ffe94d, #6bdc7a, #4dc3ff, #9a7bff, #ff6bd6, #ff6b6b);
+}
+#toast.k-secret .medal::before {
+  content: ""; position: absolute; inset: 5px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff, #efe6ff);
+}
+#toast.k-secret .rays { background: repeating-conic-gradient(#b48cff 0 10deg, transparent 10deg 30deg); display: block; }
+#toast.k-secret .timer { background: linear-gradient(90deg, #ff6b6b, #ffe94d, #4dc3ff, #9a7bff); }
+@keyframes rainbow { to { background-position: 0 0, 300% 0; } }
+#toast.k-secret .ribbon { animation-name: rainbow2; }
+@keyframes rainbow2 { to { background-position: 200% 0; } }
+
+/* конфетти поверх всего окна, клики не ловит */
+#toast-fx { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; z-index: 49; }
+
+@media (prefers-reduced-motion: reduce) {
+  #toast .rays, #toast .card, #toast .ribbon { animation: none !important; }
+}
