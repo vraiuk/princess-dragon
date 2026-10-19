@@ -1,0 +1,189 @@
+[
+  {
+    "id": "r1-05-01",
+    "severity": "medium",
+    "area": "core",
+    "title": "Одна и та же реплика может выпасть несколько раз подряд; в poke строка-статистика продублирована",
+    "repro": "node /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-05/render.js — в симуляции 6 ч без воды «Это уже не жаба, а сухарик. Срочно стакан воды!» выпало 3 раза из 4 напоминаний waterBad; pick() в core.js:34 не помнит прошлый выбор; PHRASES.poke[6] === PHRASES.poke[7] (core.js:95-96)",
+    "expected": "Рубрика п.5: «нет повторов подряд». pick() исключает предыдущую фразу того же ключа; в poke одна строка статистики (если нужен вес — явным весом, а не копией)",
+    "actual": "Повторы подряд в waterBad(3 фразы)/moveBad(2 фразы)/paused/resumed(по 1); poke: «Сегодня: 💧 {drinks} · 🤸 {breaks} · ⌨️ {coding} мин» дважды",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-05/say.tsv",
+    "file": "app/core.js:34, app/core.js:95"
+  },
+  {
+    "id": "r1-05-02",
+    "severity": "medium",
+    "area": "trophies",
+    "title": "Нет согласования с числом: «1 разминок и перерывов»",
+    "repro": "Трофеи → Статистика при totals.breaks+autoBreaks = 1, 2, 21, 22",
+    "expected": "Согласовать: plural(n, 'перерыв', 'перерыва', 'перерывов') + ' и разминок' → «1 перерыв и разминок» всё равно криво; предлагается plural(n, 'перерыв', 'перерыва', 'перерывов') + ' (вместе с разминками)' → «21 перерыв (вместе с разминками)», «22 перерыва (…)»",
+    "actual": "«1 разминок и перерывов», «2 разминок и перерывов» (строка 235 соседняя использует plural, а 236 — нет)",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-05/strings.tsv",
+    "file": "app/renderer/trophies.js:236"
+  },
+  {
+    "id": "r1-05-03",
+    "severity": "medium",
+    "area": "achievements",
+    "title": "Описание «Code review пройден» не соответствует условию: «6 разминок», а считаются все перерывы (включая автоматические)",
+    "repro": "balanced.test: c.day.breaks >= 6, а c.day.breaks = breaks + autoBreaks (achievements.js:206); разминки отдельно — c.day.stretches",
+    "expected": "Текст: «За день 6 стаканов, 6 перерывов и ни разу не сидел дольше часа.» (или условие на c.day.stretches)",
+    "actual": "«За день 6 стаканов, 6 разминок и ни разу не сидел дольше часа.» — выдаётся и без единой нажатой разминки",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-05/strings.tsv",
+    "file": "app/achievements.js:54-56"
+  },
+  {
+    "id": "r1-05-04",
+    "severity": "medium",
+    "area": "main",
+    "title": "Подсказка иконки в меню-баре: «вода через 0 мин, разминка через 0 мин», когда уже пора",
+    "repro": "Довести waterRatio ≥ 1, навести на 🐸 в меню-баре",
+    "expected": "При v.needs.water: «Жабка — пора пить воду!»; при v.needs.move: «…пора размяться!» (как в пункте меню 620-621 и pet.js:1055)",
+    "actual": "`Жабка — вода через ${v.waterLeftMin} мин` → «вода через 0 мин» бесконечно долго",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-05/strings.tsv",
+    "file": "app/main.js:524"
+  },
+  {
+    "id": "r1-05-05",
+    "severity": "medium",
+    "area": "core",
+    "title": "Длительности: «{age} мин»/«{min} мин» без часов и 5 разных форматтеров с разным результатом",
+    "repro": "say('death_stone',{gen:7,age:2950}) → «Прожила 2950 мин»; move/moveBad → «Сидишь 110 мин»; pause(t,240) → «Пауза на 240 мин» при пункте меню «4 ч»; main.age(60) → «1 ч 0 мин», age(3000) → «2 дн» (часы теряются); death.js fmtAge(3000) → «2 дн 2 ч»; trophies fmtDur(3000) → «2 дня 2 ч»; demo fmtDur(65) → «1 ч 05 мин»; poke утром → «Самый долгий заход без перерыва сегодня: 0 мин»",
+    "expected": "Один fmtDur в core (экспорт) с plural: «45 мин», «1 ч 50 мин», «2 ч», «2 дня 1 ч»; в фразах подставлять уже отформатированную длительность: «Сидишь 1 ч 50 мин. Меня уже можно ставить в парке.», «Ок, не мешаю. Пауза на 4 ч 🤫»; poke со статистикой maxSit пропускать при 0",
+    "actual": "Минуты сотнями и тысячами; один и тот же возраст выглядит по-разному в уведомлении, на надгробии и в кладбище",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-05/strings.tsv",
+    "file": "app/core.js:52,59,112,119,129; app/main.js:292-297,613; app/renderer/death.js:445-451; app/renderer/trophies.js:82-89; app/renderer/demo.js:244"
+  },
+  {
+    "id": "r1-05-06",
+    "severity": "low",
+    "area": "core",
+    "title": "Фразы смерти с {age} почти никогда не показываются: длиннее 64 символов и отсекаются в showRip",
+    "repro": "pet.js:226 показывает inf.text только если length ≤ 64; say('death_dry'/'death_stone') при gen=1, age≥100: 65–66 символов (death_dry[0], death_stone[0], death_stone[1]); уведомление main.js:313-317 текст ev.text не использует",
+    "expected": "Укоротить, убрав возраст (он и так выбит на надгробии): «Жабка #{gen} засохла в изюм. 404: water not found 🪦»; «FATAL: frog #{gen} hardened. Ты слишком долго сидел 🪦» → см. r1-05-08; «Жабка #{gen} окаменела. Теперь она нефритовая статуэтка 🗿»",
+    "actual": "3 из 8 шуток о смерти в реальной игре фактически недостижимы",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-05/say.tsv",
+    "file": "app/core.js:112,118,119; app/renderer/pet.js:226"
+  },
+  {
+    "id": "r1-05-07",
+    "severity": "low",
+    "area": "pet",
+    "title": "Пользователь везде мужского рода: «Попил», «Я размялся», «вернулся», «Сам ушёл», «ты читал», «не превратился»",
+    "repro": "grep -rn \"Попил\\|Размялся\\|вернулся\\|Вернулся\\|превратился\\|ты читал\\|Ищи сам\" app index.html README.md; ачивки: Возродил, Засушил, Окаменил, Покрыл, Довёл, Отложил, Проигнорировал, Тыкнул, Перетащил, Воскресил, не сидел",
+    "expected": "Нейтральные формы: кнопки «Выпито 💧» / «Размяться ✓» или «Готово 💧»; меню «Стакан воды выпит 💧», «Разминка сделана 🤸»; core:82 «О, ты снова тут! {min} мин без стула — отлично 👍»; ачивки через существительные/результат: «Жаба возрождена. Have you tried…», «Жаба засушена 3 раза. Египтяне аплодируют.», «Перерыв по своей воле. Без SIGKILL.»; лендинг: «Пока ты читаешь эту страницу…»; welcome/README: «…чтобы ты не стал сухарём» → «…чтобы у тебя не было шанса засохнуть и окаменеть»",
+    "actual": "Женщина-разработчица жмёт «Я попил воды» и получает «Засушил жабу 3 раза»",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-05/strings.tsv",
+    "file": "app/main.js:628-629; app/renderer/pet.js:188-202,1055-1056; app/renderer/index.html:20-21; app/renderer/welcome.js:401,423; app/core.js:82; app/achievements.js:50-130; index.html:364; README.md:5; app/renderer/welcome.html:128"
+  },
+  {
+    "id": "r1-05-08",
+    "severity": "low",
+    "area": "core",
+    "title": "«Слишком долго сидели» — безличное мн. число, выбивается из ты-обращения",
+    "repro": "say('death_stone', …) вариант 1",
+    "expected": "«FATAL: frog #{gen} hardened. Ты слишком долго сидишь 🪦»",
+    "actual": "«FATAL: frog #7 hardened. Слишком долго сидели. Прожила 2950 мин 🪦»",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-05/strings.tsv",
+    "file": "app/core.js:119"
+  },
+  {
+    "id": "r1-05-09",
+    "severity": "low",
+    "area": "achievements",
+    "title": "Грубоватое название «Железножопая жаба» (рубрика: «нет грубости»), разнесено по лендингу, шортсам и титрам",
+    "repro": "grep -rn \"Железножопая\" frog-pet",
+    "expected": "Если нужен «добрый» тон — «Чугунный стул», «Жаба-табуретка» или «Пятая точка из титана»; если оставляем как хук — решение продукта, но тогда осознанно",
+    "actual": "«🪑 Железножопая жаба — 2 часа без перерыва» в ачивке, тосте, лендинге (index.html:283), README, docs/shorts.md (82,160), showcase.js:56",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-05/strings.tsv",
+    "file": "app/achievements.js:74"
+  },
+  {
+    "id": "r1-05-10",
+    "severity": "low",
+    "area": "trophies",
+    "title": "Одни и те же шутки в разных местах: в облачке и сразу же на кладбище",
+    "repro": "Сравнить core PHRASES и EPI/EPITAPH",
+    "expected": "Эпитафии кладбища не повторяют реплики облачка. Предложения: trophies:271 → «Мечтала о болоте. Получила пустыню.»; trophies:273 → «Ждала воду до последнего коммита.»; trophies:272 → «Пила только кофе. Чужой.»; trophies:276 → «Сидела так долго, что её внесли в инвентарь офиса.»; main.js:316 → «Покойся с миром. Стакан стоял рядом.»",
+    "actual": "«Кожа шелушится, как legacy-код» (core:41) = «Кожа шелушилась, как legacy-код» (trophies:271); 418 teapot (core:49, trophies:273); «404: water not found» (core:112, main:316, showcase:76); «waterLevel === undefined/0» (core:42, trophies:272); «Сидела, пока не стала памятником» (pet.js:221, trophies:276)",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-05/strings.tsv",
+    "file": "app/renderer/trophies.js:271-276; app/core.js:41-49,112; app/main.js:316; app/renderer/pet.js:221"
+  },
+  {
+    "id": "r1-05-11",
+    "severity": "low",
+    "area": "core",
+    "title": "Корявые обороты в репликах",
+    "repro": "Прочитать строки",
+    "expected": "core:100 «Ещё немного — и от меня останется stack trace из песка 🥵»; core:120 «Жабка #{gen} рассыпалась на камушки. Техдолг по сидению закрыт — ценой жабы 🪦»; trophies:257 «У неё на машине всё работало.»; trophies:277 «Окаменела, так и не дождавшись твоей разминки.»; trophies:270 «Высохла быстрее, чем твой npm install.»; showcase:106 «…и пишу код вместе с тобой.»",
+    "actual": "«и я stack trace из песка»; «Сидячий техдолг погашен ею»; «Работала на её машине.» (переворот смысла «works on my machine»); «в ожидании, пока ты встанешь» (калька); «быстрее, чем кэш в npm» (кэш не сохнет); «кодю» (нелитературная форма)",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-05/strings.tsv",
+    "file": "app/core.js:100,120; app/renderer/trophies.js:257,270,277; app/showcase.js:106"
+  },
+  {
+    "id": "r1-05-12",
+    "severity": "low",
+    "area": "landing",
+    "title": "Тексты расходятся с фактами в коде",
+    "repro": "Сравнить с DEFAULTS/showcase/core",
+    "expected": "(а) «50/10»: перерыв засчитывается после breakAfter=5 мин → писать «50/5» или «каждые 50 минут — встань хотя бы на 5»; (б) длина сценария short: README:70 и shorts.md:11 «~50 с», showcase.js:30 «~58 с» → «~58 с»; (в) «После сна дольше 2 часов жаба сразу попросит воды»: при 2–6 ч core ставит waterMs=0.9 интервала и напоминание будет через ~4–5 мин, «Доброе утро» только после 6 ч → «…жаба почти сразу попросит воды»",
+    "actual": "См. repro: settings.html:171, README.md:61, index.html:206,300, shorts.md (озвучка №3 «десять двигаешься»); README.md:70, docs/shorts.md:11; index.html:303, README.md:64",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-05/strings.tsv",
+    "file": "app/renderer/settings.html:171; README.md:61,64,70; index.html:206,300,303; docs/shorts.md:11"
+  },
+  {
+    "id": "r1-05-13",
+    "severity": "medium",
+    "area": "trophies",
+    "title": "Мок трофеев (по нему снимаются QA-скриншоты win-trophies-*) содержит несуществующие ачивки и другой стиль описаний",
+    "repro": "npm run qa:ui → qa/out/win-trophies-light.png: ui-check.js:124 открывает trophies.html без frogApp → makeMock()",
+    "expected": "Мок строится из реальных FrogAchievements.DEFS (title/desc/rarity) — скриншоты для LLM-судьи и ролика показывают настоящие тексты",
+    "actual": "В моке «Кит-девелопер», «Гибкий как Agile», «Жабий император» (30 дней), «Серийный жабоубийца», «Чит-код», «Ночной деплой»; описания в инфинитиве («Выпить первый стакан воды») против прошедшего времени в DEFS; редкости не совпадают (iron_butt rare vs epic, raisin epic vs rare)",
+    "evidence": "qa/out/win-trophies-light.png",
+    "file": "app/renderer/trophies.js:29-46"
+  },
+  {
+    "id": "r1-05-14",
+    "severity": "low",
+    "area": "toast",
+    "title": "Названия редкости и подсказка секретной ачивки различаются между окнами",
+    "repro": "toast.js:10 vs trophies.js:118 vs index.html:280-288; achievements.js:138 vs trophies.js:131",
+    "expected": "Везде «обычная / редкая / эпическая / легендарная»; один текст для скрытой ачивки, без рода: «Секретная ачивка. Жаба не скажет 🤫»",
+    "actual": "Тост: «эпик», «легенда»; трофеи: «Эпическая», «Легендарная». HIDDEN.desc «Секретная ачивка. Ищи сам 🤫» vs трофеи «Секретная ачивка. Ищи сам — жаба не скажет.»",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-05/strings.tsv",
+    "file": "app/renderer/toast.js:10; app/achievements.js:138; app/renderer/trophies.js:131"
+  },
+  {
+    "id": "r1-05-15",
+    "severity": "low",
+    "area": "trophies",
+    "title": "«засохло: N · окаменело: N» — средний род про жаб",
+    "repro": "Трофеи → Кладбище с ≥1 могилой",
+    "expected": "«🥵 засохших: N · 🗿 окаменевших: N»",
+    "actual": "«🥵 засохло: 2 · 🗿 окаменело: 1»",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-05/strings.tsv",
+    "file": "app/renderer/trophies.js:303"
+  },
+  {
+    "id": "r1-05-16",
+    "severity": "low",
+    "area": "core",
+    "title": "Типографика: «...» вместо «…», десятичная точка, разнобой DDoS/ддос, «1,5ч» без пробела",
+    "repro": "grep по strings.tsv",
+    "expected": "«…» везде (как в pet.js:184); «Аптайм 99,9 %»; «это DDoS почек» (как в ачивке ddos); «1,5 ч»",
+    "actual": "core:47 «изюм... ВОДЫ!», core:102 «туннеля... это», showcase:42,45 «прошёл час...», «...и ачивка»; achievements:63 «99.9%»; achievements:121 «ддос почек»; trophies.js:202 «1,5ч»",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-05/strings.tsv",
+    "file": "app/core.js:47,102; app/showcase.js:42,45; app/achievements.js:63,121; app/renderer/trophies.js:202"
+  },
+  {
+    "id": "r1-05-17",
+    "severity": "low",
+    "area": "showcase",
+    "title": "Реплика демо в облачке 99 символов — больше лимита ~90 для облачка 260px",
+    "repro": "Демо в браузере → клик по 🐸 в фейковом меню-баре (demo.js:309)",
+    "expected": "«Вода через 45 мин, разминка через 50. Тут в приложении — трофеи, настройки, пауза.» (≈80)",
+    "actual": "«Вода через 45 мин, разминка через 50 мин. Это меню-бар: в приложении тут трофеи, настройки и пауза.» (99); соседние demo.js:326 — 84–88, на грани",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-05/strings.tsv",
+    "file": "app/renderer/demo.js:309,326"
+  }
+]
