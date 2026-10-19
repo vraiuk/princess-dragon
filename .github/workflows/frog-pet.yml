@@ -24,7 +24,7 @@ jobs:
           cache-dependency-path: frog-pet/package-lock.json
       - run: npm ci
       - run: npm test
-      - name: Сборка .dmg и .zip (Universal: Apple Silicon + Intel)
+      - name: 'Сборка .dmg и .zip — Universal, Apple Silicon + Intel'
         run: npx electron-builder --mac --universal --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
