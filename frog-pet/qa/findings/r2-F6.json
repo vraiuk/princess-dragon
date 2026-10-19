@@ -1,0 +1,161 @@
+[
+ {
+  "finding": "r1-04-01",
+  "verdict": "confirmed",
+  "why": "На HEAD revive шёл раньше надгробия во всех 4 сценариях (как в r1-04). Замер по кадрам 9:16 после правок F5: смерть → надгробие целиком 6.3 с (dry) / 6.5 с (stone), облачко «🥚 Новая жаба» 7.1 / 7.3 с; при двух тостах ачивок облачко ждёт их конца (~8.3 с).",
+  "fix": "showcase.js: TIMING {tomb, rip, tombHold 2.5, hatch 6.8}; все revive сдвинуты: short 28.4 и 66.1 с, water 28.4, stone 30.0, tour 60.6 и 95.1. В браузере облачко RIP висит 2.75–3.65 с, надгробие 4.35–5.3 с (/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r2-F6/*/timeline.json). Тест сверяет TIMING с T_*.tomb+TOMB_RISE и T_EGG.done из death.js.",
+  "test": "test/showcase.test.js"
+ },
+ {
+  "finding": "r1-04-02",
+  "verdict": "confirmed",
+  "why": "filmCtl в main.js без caption.",
+  "fix": "Не моя зона; шаги caption оставлены в сценариях.",
+  "handoff": "app/main.js (F3): filmCtl.caption → окно жабы (по ROUND2 делает F3)",
+  "test": null
+ },
+ {
+  "finding": "r1-04-03",
+  "verdict": "confirmed",
+  "why": "Длина, хук и таймкоды short не совпадали с docs/shorts.md.",
+  "fix": "Одна версия: short 80 с, хук «Моя жаба умрёт, если я не пью воду и не встаю», CTA «Жабка для macOS. Ссылка в профиле», титры «Жабка #2/#3». В docs/shorts.md таблица с таймкодами сценария и честный раздел «≤45 с»: в 40 с две смерти с надгробием не помещаются; вариант 0–37 с теряет окаменение, тосты «Нефритовая»/«Железножопая» и финальный CTA; склейка 0–25+49–61+72–80 теряет вылупление #2, надгробие #2 и напоминание о разминке. Тест сверяет длины и титры short с документом.",
+  "test": "test/showcase.test.js",
+  "handoff": "README.md (F9): длина short «~50 с» → «~80 с»"
+ },
+ {
+  "finding": "r1-04-04",
+  "verdict": "confirmed",
+  "why": "Напоминание перебивал say через 0.5–0.9 с.",
+  "fix": "Правило в тесте: облачко висит ≥ max(2 с, 0.2 с на слово), ничем не перебивается. В браузере первый показ напоминания 2.72–3.45 с (15 слов о разминке — 2.9–3.1 с). После «Позже» pet.js сам возвращает напоминание; его второй показ 1.9 с до «при смерти» — это повтор, текст уже прочитан.",
+  "test": "test/showcase.test.js"
+ },
+ {
+  "finding": "r1-04-05",
+  "verdict": "confirmed",
+  "why": "drink/stretch/say во время яйца, приветствие после конца сценария.",
+  "fix": "Пока жаба в яйце и здоровается (revive + 6.8 с + время чтения), только титры. В браузере приветствие 2.8–5 с, все сценарии кончаются после него.",
+  "test": "test/showcase.test.js"
+ },
+ {
+  "finding": "r1-04-06",
+  "verdict": "confirmed",
+  "why": "У water/stone/tour не было белого списка.",
+  "fix": "water ['raisin'], stone ['jade','iron_butt'], tour ['raisin','jade','iron_butt']; тосты только на смертях. Тест: тост не закрывает напоминание или «при смерти».",
+  "test": "test/showcase.test.js"
+ },
+ {
+  "finding": "r1-04-07",
+  "verdict": "confirmed",
+  "why": "water/stone кончались в яйце, без CTA.",
+  "fix": "water: надгробие + «Она напоминала каждые 45 минут. Я не слушал.», жаба вылупляется, CTA «Жабка для macOS. Попей воды», пьёт (40 с). stone: «Встань раз в 50 минут. Жаба сама заметит.», CTA «Жабка для macOS», разминается (42 с). Тест: последний титр — CTA, после вылупления, дочитывается до конца.",
+  "test": "test/showcase.test.js"
+ },
+ {
+  "finding": "r1-04-08",
+  "verdict": "confirmed",
+  "why": "Тексты core случайные.",
+  "fix": "showcase.js: LINES + director.line(ev) заменяет текст/подсказку событий на съёмке (повторы по очереди, {gen}/{min}); demo.js применяет его в handle() и даёт пету на съёмке seeded-rnd (createPet(..., rnd) от F1). Тест: три дубля с разным Math.random дают одни тексты.",
+  "test": "test/showcase.test.js",
+  "handoff": "app/main.js (F3): в handleEvent при film вызвать film.director.line(ev) до send; в filmReset передать Core.createPet(null, settings, now, seeded rnd)"
+ },
+ {
+  "finding": "r1-04-09",
+  "verdict": "confirmed",
+  "why": "Титр на фоне тоста, «5 минут» против «Перерыв 17 мин».",
+  "fix": "Титры перенесены мимо тостов (тест на пересечения). ff с {away:true}: простой растёт вместе с симулированным временем, титр «6 минут» = облачко «Перерыв 6 мин» (тест).",
+  "test": "test/showcase.test.js"
+ },
+ {
+  "finding": "r1-04-10",
+  "verdict": "confirmed",
+  "why": "Плашка «Нажми 🥚» на съёмке.",
+  "fix": "demo.js: на съёмке системные плашки не показываются. Карточку демо не прячу: в ней кнопка ⏹; для вертикали в docs рекомендуется ?ratio=9:16.",
+  "test": null
+ },
+ {
+  "finding": "r1-04-11",
+  "verdict": "confirmed",
+  "why": "Старт через 1.5 с, часы прыгали.",
+  "fix": "demo.js: при ?film= сцена сразу в 11:00, сценарий через 0.4 с (кадр 0 уже «11:00», хук на 0.6 с).",
+  "test": null
+ },
+ {
+  "finding": "r1-04-12",
+  "verdict": "confirmed",
+  "why": "death.js — зона F5.",
+  "fix": "Не правлю.",
+  "handoff": "app/renderer/death.js (F5): reborn() чистить parts (пыль) так же, как pieces/heap",
+  "test": null
+ },
+ {
+  "finding": "r1-04-13",
+  "verdict": "confirmed",
+  "why": "HUD на 90–96% высоты, 11 px.",
+  "fix": "demo.js: HUD в 9:16 сверху (y 36–65 из 960), 15 px, в одну строку; часы убраны (есть в меню-баре), титр опущен на 84 px.",
+  "test": null
+ },
+ {
+  "finding": "r1-04-14",
+  "verdict": "confirmed",
+  "why": "title содержал «(~58 с)», меню добавляло ещё раз.",
+  "fix": "Из title убраны длительности; demo.js добавляет « (~N с)» сам, как filmMenu. Тест на title.",
+  "test": "test/showcase.test.js"
+ },
+ {
+  "finding": "r1-04-15",
+  "verdict": "unknown",
+  "why": "fps в headless без GPU; на Mac не проверить. В записях круга 2 тайминги совпали с симуляцией ±0.4 с.",
+  "fix": "Не делаю.",
+  "test": null
+ },
+ {
+  "finding": "r1-02-05",
+  "verdict": "confirmed",
+  "why": "Воспроизвёл: away давал idleSec=3600.",
+  "fix": "demo.js: простой при «Отойти» считается от симулированного момента ухода. Playwright ×60, 11 с: «Перерыв 11 мин засчитан» (23:23→23:34).",
+  "test": null
+ },
+ {
+  "finding": "r1-05-05",
+  "verdict": "confirmed",
+  "why": "Часть про demo fmtDur.",
+  "fix": "demo.js: HUD использует Core.fmtDur (от F1).",
+  "test": null
+ },
+ {
+  "finding": "r1-05-09",
+  "verdict": "unknown",
+  "why": "Вопрос продукта: варианты — оставить как хук или переименовать («Чугунный стул»). Название берётся из achievements.js (F2).",
+  "fix": "Не меняю; docs/shorts.md поправлю вслед за решением.",
+  "test": null
+ },
+ {
+  "finding": "r1-05-11",
+  "verdict": "confirmed",
+  "why": "«кодю» в showcase.js:106.",
+  "fix": "«…и пишу код вместе с тобой».",
+  "test": null
+ },
+ {
+  "finding": "r1-05-12",
+  "verdict": "confirmed",
+  "why": "Длина short в docs; «50/10».",
+  "fix": "docs/shorts.md: длины по сценариям (тест); «50/10» → «каждые 50 минут — встань хотя бы на 5».",
+  "handoff": "README.md (F9): длина short",
+  "test": "test/showcase.test.js"
+ },
+ {
+  "finding": "r1-05-16",
+  "verdict": "confirmed",
+  "why": "«прошёл час...», «...и ачивка» в showcase.js.",
+  "fix": "Эти титры удалены.",
+  "test": null
+ },
+ {
+  "finding": "r1-05-17",
+  "verdict": "confirmed",
+  "why": "99 символов.",
+  "fix": "demo.js: «Вода через N мин, разминка через M. Тут в приложении — трофеи, настройки, пауза.» (~80).",
+  "test": null
+ }
+]

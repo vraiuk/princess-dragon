@@ -100,11 +100,13 @@
     html.demo-916 .demo-card, html.demo-916 .demo-note { display: none; }
     html.demo-916 #pet { left: 50%; top: 54%; right: auto; bottom: auto; margin: 0; transform-origin: 50% 50%;
       transform: translate(-50%, -50%) scale(var(--z, 2)); }
-    html.demo-916 .demo-cap { top: 52px; font-size: 26px; padding: 12px 20px; border-radius: 20px; width: max-content; }
-    html.demo-916 .demo-hud { display: flex; position: fixed; left: 50%; bottom: 34px; transform: translateX(-50%); z-index: 6; gap: 6px;
-      font: 700 13px/1 Menlo, ui-monospace, monospace; color: #e9ecff; white-space: nowrap;
-      max-width: calc(100vw - 16px); flex-wrap: wrap; justify-content: center; }
-    @media (max-width: 480px) { html.demo-916 .demo-hud { font-size: 11px; gap: 4px; bottom: 24px; } .demo-hud span { padding: 6px 7px; } }
+    html.demo-916 .demo-cap { top: 84px; font-size: 26px; padding: 12px 20px; border-radius: 20px; width: max-content; }
+    /* счётчики — сюжет ролика («2 часа без воды»): сверху, а не в нижней трети под интерфейсом Shorts/TikTok */
+    html.demo-916 .demo-hud { display: flex; position: fixed; left: 50%; top: 36px; transform: translateX(-50%); z-index: 6; gap: 6px;
+      font: 700 15px/1 Menlo, ui-monospace, monospace; color: #e9ecff; white-space: nowrap;
+      max-width: calc(100vw - 16px); flex-wrap: nowrap; justify-content: center; }
+    html.demo-916 #hClock { display: none; }   /* часы уже есть в меню-баре */
+    @media (max-width: 400px) { html.demo-916 .demo-hud { font-size: 13px; gap: 4px; } .demo-hud span { padding: 6px 7px; } }
     .demo-hud span { padding: 7px 9px; border-radius: 12px; background: rgba(255,255,255,.1); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); }
     .demo-hud .ff { background: #b5487a; opacity: 0; transition: opacity .25s; }
     .demo-hud .ff.on { opacity: 1; }
@@ -119,7 +121,7 @@
   document.body.prepend(bar);
 
   const scripts = (Show && Show.SCRIPTS) || {};
-  const filmOptions = Object.keys(scripts).map((k) => `<option value="${k}">${scripts[k].title || k}</option>`).join('');
+  const filmOptions = Object.keys(scripts).map((k) => `<option value="${k}">${scripts[k].title || k}${scripts[k].duration ? ` (~${Math.round(scripts[k].duration)} с)` : ''}</option>`).join('');
 
   const card = document.createElement('div');
   card.className = 'demo-card';
@@ -165,7 +167,7 @@
   window.addEventListener('resize', applyZoom);
 
   // ---------- имитация main ----------
-  let speed = 1, away = false;
+  let speed = 1, away = false, awaySim = 0;   // awaySim — симулированный момент, когда «отошёл»
   let realLast = Date.now(), simNow = Date.now();
   let lastInput = Date.now();
   let filmIdle = null;           // во время съёмки простой задаёт сценарий
@@ -195,7 +197,8 @@
 
   function idleSec() {
     if (filmIdle != null) return filmIdle;
-    if (away) return 3600;
+    // простой в симулированном времени: при ×60 за 11 с «отошёл» на 11 мин, а не на час
+    if (away) return Math.max(0, (simNow - awaySim) / 1000);
     return (Date.now() - lastInput) / 1000;
   }
 
@@ -210,7 +213,9 @@
   }
 
   function handle(ev) {
+    if (director && director.line) director.line(ev);   // на съёмке — фиксированные фразы
     emit('event', ev);
+    if (director) return;   // системные плашки на съёмке не нужны: сценарий возрождает сам
     if (ev.type === 'remind' && ev.nag >= 2) {
       showNote(ev.kind === 'water' ? '💧 Пора попить воды' : '🤸 Пора размяться', ev.text);
     } else if (ev.type === 'death') {
@@ -241,7 +246,7 @@
     acc.push(...evs);
   }
 
-  const fmtDur = (min) => (min >= 60 ? `${Math.floor(min / 60)} ч ${String(Math.floor(min % 60)).padStart(2, '0')} мин` : `${Math.floor(min)} мин`);
+  const fmtDur = Core.fmtDur || ((min) => `${Math.round(min)} мин`);   // один формат с облачком и трофеями (r1-05-05)
 
   function render() {
     const v = curView();
@@ -291,14 +296,18 @@
   const $away = document.getElementById('dAway');
   $away.addEventListener('click', () => {
     away = !away;
+    if (away) awaySim = simNow;
     $away.classList.toggle('on', away);
     $away.textContent = away ? '🪑 Вернуться за компьютер' : '🚶 Отойти от компьютера';
     if (!away) lastInput = Date.now();
   });
 
-  function resetPet(t) {
+  // на съёмке core берёт фразы из генератора с фиксированным зерном — дубли одинаковые
+  // (поверх этого director.line ставит фразы сценария)
+  function seeded(seed) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
+  function resetPet(t, rnd) {
     simNow = t || Date.now();
-    pet = Core.createPet(null, settings, simNow);
+    pet = Core.createPet(null, settings, simNow, rnd);
     pet.tick(simNow, 0);
     ach = makeAch();
     render();
@@ -306,7 +315,7 @@
   document.getElementById('dReset').addEventListener('click', () => { stopFilm(); resetPet(); });
   bar.querySelector('.demo-tray').addEventListener('click', () => {
     const v = pet.view(simNow);
-    emit('event', { type: 'say', text: `Вода через ${v.waterLeftMin} мин, разминка через ${v.moveLeftMin} мин. Это меню-бар: в приложении тут трофеи, настройки и пауза.` });
+    emit('event', { type: 'say', text: `Вода через ${v.waterLeftMin} мин, разминка через ${v.moveLeftMin}. Тут в приложении — трофеи, настройки, пауза.` });
   });
 
   // ---------- действия (как в main) ----------
@@ -345,7 +354,7 @@
     reset() {
       // сцена всегда «в 11 утра», чтобы не ловить ночные ачивки
       const d = new Date(); d.setHours(11, 0, 0, 0);
-      resetPet(d.getTime());
+      resetPet(d.getTime(), seeded(1017));
       filmIdle = 1;
     },
     ff(minutes, idle) {
@@ -392,7 +401,11 @@
   }
   function stopFilm() { if (director) director.stop(); }
   if ($film) $film.addEventListener('click', () => (director ? stopFilm() : startFilm($pick.value)));
-  if (q.has('film') && scripts[q.get('film')]) setTimeout(() => startFilm(q.get('film')), 1500);
+  // ?film=… — сцена сразу «в 11:00» (без скачка часов) и хук почти с первого кадра
+  if (q.has('film') && scripts[q.get('film')]) {
+    ctl.reset();
+    setTimeout(() => startFilm(q.get('film')), 400);
+  }
 
   // ---------- перетаскивание по «рабочему столу» ----------
   let drag = null;

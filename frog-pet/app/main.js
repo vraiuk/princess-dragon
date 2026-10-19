@@ -367,6 +367,8 @@ function handleEvent(ev) {
     if (now - lastNagAt < settings.nagEvery * 60 * 1000 - 1500) ev = Object.assign({}, ev, { quiet: true });
     else lastNagAt = now;
   }
+  // на съёмке — фиксированные фразы сценария, как в браузерном демо
+  if (film && film.director && typeof film.director.line === 'function') film.director.line(ev);
   send('event', ev);
   if (film) return;
   if (ev.type === 'remind') {
