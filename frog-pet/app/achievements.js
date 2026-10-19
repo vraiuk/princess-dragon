@@ -52,8 +52,8 @@
       desc: 'Стакан воды до 9 утра. Кофе подождёт.',
       test: (c) => c.hour >= 4 && c.hour < 9 && hasEv(c, 'drink') },
     { id: 'balanced', kind: 'good', rarity: 'rare', icon: '⚖️', title: 'Code review пройден',
-      desc: 'За день 6 стаканов, 6 разминок и ни разу не сидел дольше часа.',
-      test: (c) => c.day.drinks >= 6 && c.day.breaks >= 6 && c.day.maxSit <= 60 },
+      desc: 'За день 6 стаканов, 6 перерывов и ни разу больше часа на стуле.',
+      test: (c) => c.balancedDay() },
     { id: 'streak3', kind: 'good', rarity: 'rare', icon: '📈', title: 'Стабильный релиз',
       desc: '3 хороших дня подряд (6 стаканов и 4 перерыва).', max: 3, cur: (c) => c.streak() },
     { id: 'streak7', kind: 'good', rarity: 'legendary', icon: '🏅', title: 'Неделя без багов',
@@ -118,7 +118,7 @@
     { id: 'drag10', kind: 'secret', rarity: 'rare', icon: '🚚', title: 'Переезд в новый офис',
       desc: 'Перетащил жабу 10 раз. Опен-спейс ей не нравится.', max: 10, cur: (c) => c.s.drags },
     { id: 'vodohleb', kind: 'secret', rarity: 'rare', icon: '🫗', title: 'Водохлёб',
-      desc: '3 стакана за 5 минут. Это не гидратация, это ддос почек.',
+      desc: '3 стакана за 5 минут. Это не гидратация, это DDoS почек.',
       test: (c) => c.s.drinkTimes.length >= 3 && c.now - c.s.drinkTimes[c.s.drinkTimes.length - 3] <= 5 * MIN },
     { id: 'leet', kind: 'secret', rarity: 'legendary', icon: '🕶️', title: '1337 h4x0r',
       desc: 'Вернулся с перерыва ровно в 13:37.',
@@ -135,7 +135,7 @@
   ];
 
 
-  const HIDDEN = { title: '???', desc: 'Секретная ачивка. Ищи сам 🤫', icon: '❓' };
+  const HIDDEN = { title: '???', desc: 'Секретная ачивка. Жаба не скажет 🤫', icon: '❓' };
 
   function createAchievements(saved) {
     saved = saved && typeof saved === 'object' ? saved : {};
@@ -150,6 +150,13 @@
 
     let streakCache = { key: '', val: 0 };
     let zeroCache = { key: '', val: false };
+    let balancedCache = { key: '', val: false };
+
+    // День, в который жаба хоть раз была мёртвой (смерть или тик в смерти) — не zero downtime
+    function markDown(now) {
+      const k = dayKey(now);
+      if (s.deathDays[s.deathDays.length - 1] !== k && s.deathDays.indexOf(k) < 0) s.deathDays = s.deathDays.concat(k).slice(-40);
+    }
 
     // Обновляем свои счётчики по событиям тика
     function absorb(events, now, dead) {
@@ -173,12 +180,12 @@
             if (e.cause === 'dry') s.deathsDry++;
             if (e.cause === 'stone') s.deathsStone++;
             s.lastDeathAt = now;
-            if (s.deathDays.indexOf(dayKey(now)) < 0) s.deathDays = s.deathDays.concat(dayKey(now)).slice(-40);
             break;
           case 'reborn': s.bornAt = now; break;
         }
       }
       if (!s.bornAt && !dead) s.bornAt = now;
+      if (dead) markDown(now);
     }
 
     function check(ctx) {
@@ -217,6 +224,7 @@
         ageDays: dead ? 0 : Math.floor(ageMin / DAY_MIN),
         streak: () => streak(state, sd),
         zeroDowntime: () => zeroDowntime(state),
+        balancedDay: () => balancedDay(state),
       };
 
       const out = [];
@@ -224,7 +232,8 @@
         if (unlocked[def.id]) continue;
         let ok;
         if (def.max) {
-          const cur = Math.min(def.max, Math.max(num(prog[def.id]), Math.floor(num(def.cur(c)))));
+          // текущий факт, а не рекорд: дневные, серии и возраст жабы могут падать до 0
+          const cur = Math.min(def.max, Math.max(0, Math.floor(num(def.cur(c)))));
           prog[def.id] = cur;
           ok = cur >= def.max;
         } else {
@@ -262,13 +271,28 @@
     function zeroDowntime(state) {
       const hist = Array.isArray(state.history) ? state.history : [];
       const last = hist[hist.length - 1];
-      const key = hist.length + '|' + (last && last.date) + '|' + s.deathDays.length;
+      const key = hist.length + '|' + (last && last.date) + '|' + s.deathDays.length + '|' + s.deathDays[s.deathDays.length - 1];
       if (zeroCache.key === key) return zeroCache.val;
       let val = false;
       for (const h of hist.slice(-7)) {
         if (h && num(h.drinks) >= 6 && !num(h.deaths) && s.deathDays.indexOf(h.date) < 0) { val = true; break; }
       }
       zeroCache = { key, val };
+      return val;
+    }
+
+    // Закрытый день в истории: 6+ стаканов, 6+ перерывов, ни разу больше часа на стуле.
+    // Открытый день не годится: «ни разу больше часа» становится правдой только к его концу.
+    function balancedDay(state) {
+      const hist = Array.isArray(state.history) ? state.history : [];
+      const last = hist[hist.length - 1];
+      const key = hist.length + '|' + (last && last.date);
+      if (balancedCache.key === key) return balancedCache.val;
+      let val = false;
+      for (const h of hist.slice(-7)) {
+        if (h && num(h.drinks) >= 6 && num(h.breaks) + num(h.autoBreaks) >= 6 && num(h.maxSitMs) <= 60 * MIN) { val = true; break; }
+      }
+      balancedCache = { key, val };
       return val;
     }
 

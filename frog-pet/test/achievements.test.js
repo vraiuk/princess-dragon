@@ -247,3 +247,68 @@ test('неделя жизни с перезапусками: ни одна ач�
   const perCheck = (Date.now() - started) / checks;
   assert.ok(perCheck < 1, `tick+check ${perCheck.toFixed(3)} мс — укладывается в секундный тик`);
 });
+
+
+// ---- R2 (F2): прогресс = текущий факт, честные «дневные» ачивки ----
+
+function harness(settings, t0) {
+  const h = { t: t0, pet: Core.createPet(null, settings || {}, t0), A: createAchievements(null), got: [] };
+  h.check = (events) => { h.got.push(...ids(h.A.check({ now: h.t, events, view: h.pet.view(h.t), state: h.pet.serialize(), settings: {} }))); };
+  h.tick = (dt, idle = 1) => { h.t += dt; h.check(h.pet.tick(h.t, idle)); };
+  h.act = (name) => { h.check([h.pet[name](h.t)]); };
+  h.untilDead = () => { let i = 0; while (h.pet.view(h.t).life === 'alive' && i++ < 5000) h.tick(20 * 1000); };
+  h.check(h.pet.tick(h.t, 0));
+  return h;
+}
+const prog = (A, id) => A.list().find((a) => a.id === id).progress;
+
+test('r1-06-05: прогресс дневной ачивки — сегодняшний факт, а не рекорд прошлых дней', () => {
+  const h = harness({}, new Date(2026, 9, 14, 12).getTime());
+  for (let i = 0; i < 5; i++) { h.act('drink'); h.t += MIN; }
+  assert.deepStrictEqual(prog(h.A, 'hydrated'), { cur: 5, max: 8 });
+  h.tick(14 * HOUR, 0); // ночь, новый день
+  assert.deepStrictEqual(prog(h.A, 'hydrated'), { cur: 0, max: 8 });
+  // накопительные счётчики при этом не теряются
+  assert.deepStrictEqual(prog(h.A, 'aquarium'), { cur: 5, max: 100 });
+});
+
+test('r1-06-05: прогресс возраста и серии обнуляется вместе с жабой/серией', () => {
+  const h = harness({}, new Date(2026, 9, 14, 12).getTime());
+  for (let d = 0; d < 2; d++) { h.tick(12 * HOUR, 0); h.tick(12 * HOUR, 0); }
+  assert.deepStrictEqual(prog(h.A, 'alive7'), { cur: 2, max: 7 });
+  h.untilDead();
+  h.act('revive');
+  assert.deepStrictEqual(prog(h.A, 'alive7'), { cur: 0, max: 7 });
+  // после перезапуска полученные остаются max/max
+  const B = createAchievements(JSON.parse(JSON.stringify(h.A.serialize())));
+  assert.deepStrictEqual(B.list(), h.A.list());
+});
+
+test('r1-06-06: zero_downtime не выдаётся за день, который жаба пролежала мёртвой', () => {
+  const h = harness({}, new Date(2026, 9, 13, 20).getTime());
+  h.untilDead(); // умерла вечером 13-го
+  const end = new Date(2026, 9, 15, 0, 30).getTime();
+  let n = 0;
+  while (h.t < end) {
+    h.tick(MIN, 1);
+    if (h.pet.state.day.date === '2026-10-14' && n < 6 && new Date(h.t).getHours() >= 10) { h.act('drink'); n++; }
+  }
+  assert.strictEqual(h.pet.view(h.t).life, 'dead');
+  assert.ok(!h.got.includes('zero_downtime'), h.got.join(','));
+});
+
+test('r1-06-07: balanced оценивается по закрытому дню, а не через минуту после его начала', () => {
+  const day = (d, o) => Object.assign({ date: Core.dayKey(new Date(2026, 9, d).getTime()), drinks: 6, breaks: 0, autoBreaks: 6, maxSitMs: 50 * MIN }, o);
+  // сегодня всё сделано, но день ещё не закрыт
+  let A = createAchievements(null);
+  let got = ids(A.check({ now: new Date(2026, 9, 14, 9, 1).getTime(), events: [], view: {}, state: { history: [], day: day(14, { maxSitMs: 0 }) } }));
+  assert.ok(!got.includes('balanced'));
+  // вчера 6/6, но был час с лишним на стуле — нет
+  got = ids(A.check({ now: new Date(2026, 9, 15, 9).getTime(), events: [], view: {}, state: { history: [day(14, { maxSitMs: 70 * MIN })], day: day(15, { drinks: 0, autoBreaks: 0 }) } }));
+  assert.ok(!got.includes('balanced'));
+  // закрытый день 6 стаканов, 6 перерывов (авто тоже перерывы), ≤ 60 мин на стуле — да
+  A = createAchievements(null);
+  got = ids(A.check({ now: new Date(2026, 9, 15, 9).getTime(), events: [], view: {}, state: { history: [day(14)], day: day(15, { drinks: 0, autoBreaks: 0 }) } }));
+  assert.ok(got.includes('balanced'));
+  assert.match(DEFS.find((d) => d.id === 'balanced').desc, /6 перерывов/);
+});
