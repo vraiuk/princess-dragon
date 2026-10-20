@@ -65,6 +65,21 @@ const storePath = () => path.join(app.getPath('userData'), 'frog.json');
 
 const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 
+// Битые копии: только три последние, остальные удаляем (иначе копятся без ограничения)
+const BROKEN_KEEP = 3;
+function pruneBroken() {
+  try {
+    const dir = path.dirname(storePath()), base = path.basename(storePath()) + '.broken';
+    const files = fs.readdirSync(dir).filter((f) => f === base || f.startsWith(base + '-'))
+      .map((f) => ({ f: path.join(dir, f), t: fs.statSync(path.join(dir, f)).mtimeMs }))
+      .sort((a, b) => b.t - a.t);
+    files.forEach(({ f }, i) => {
+      if (i >= BROKEN_KEEP) fs.unlinkSync(f);
+      else fs.chmodSync(f, 0o600);
+    });
+  } catch (e) { console.error('broken copies', e.message); }
+}
+
 function load() {
   let data = null;
   try { data = JSON.parse(fs.readFileSync(storePath(), 'utf8')); } catch (e) {
@@ -73,7 +88,8 @@ function load() {
       console.error('frog.json не читается, начинаем заново', e.message);
       // прошлую копию не затираем: вторая и дальше — с меткой времени
       const keep = fs.existsSync(storePath() + '.broken') ? `${storePath()}.broken-${Date.now()}` : storePath() + '.broken';
-      try { fs.copyFileSync(storePath(), keep); } catch { /* нечего копировать */ }
+      try { fs.copyFileSync(storePath(), keep); fs.chmodSync(keep, 0o600); } catch { /* нечего копировать */ }
+      pruneBroken();
     }
   }
   if (!isObj(data)) return {};
@@ -118,7 +134,8 @@ function writeStore(text) {
   if (!dirReady) { fs.mkdirSync(path.dirname(storePath()), { recursive: true }); dirReady = true; }
   const tmp = storePath() + '.tmp';
   const fd = fs.openSync(tmp, 'w', 0o600);
-  try { fs.writeSync(fd, text); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+  // забытый .tmp от старой версии мог остаться с 0644: open его режим не меняет
+  try { fs.fchmodSync(fd, 0o600); fs.writeSync(fd, text); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
   fs.renameSync(tmp, storePath());
 }
 
@@ -169,15 +186,21 @@ function size() {
 
 function defaultPos(w, h) {
   const wa = screen.getPrimaryDisplay().workArea;
-  return [wa.x + wa.width - w - 16, wa.y + wa.height - h + 6];
+  // целиком в рабочей области: иначе fitPos при следующем запуске сдвинет жабу
+  return [wa.x + wa.width - w - 16, wa.y + wa.height - h];
 }
 
-function validPos(pos, w, h) {
-  if (!Array.isArray(pos)) return null;
+// Позиция окна на экранах: все четыре угла видны — оставляем как есть (можно и на стыке мониторов);
+// центр на каком-то экране — двигаем в его рабочую область; иначе (монитор пропал) — null, ставим в угол
+function fitPos(pos, w, h) {
+  if (!Array.isArray(pos) || !Number.isFinite(pos[0]) || !Number.isFinite(pos[1])) return null;
   const [x, y] = pos;
-  const ok = screen.getAllDisplays().some(({ workArea: a }) =>
-    x + w * 0.5 >= a.x && x + w * 0.5 <= a.x + a.width && y + h * 0.5 >= a.y && y + h * 0.5 <= a.y + a.height);
-  return ok ? pos : null;
+  const areas = screen.getAllDisplays().map((d) => d.workArea);
+  const inside = (px, py) => areas.some((a) => px >= a.x && px <= a.x + a.width && py >= a.y && py <= a.y + a.height);
+  if ([[x, y], [x + w, y], [x, y + h], [x + w, y + h]].every(([px, py]) => inside(px, py))) return pos;
+  if (!inside(x + w * 0.5, y + h * 0.5)) return null;
+  const b = clampToScreen({ x, y, width: w, height: h });
+  return [b.x, b.y];
 }
 
 // окно живо и его рендер не упал (в упавший send только сыплет ошибками в stderr)
@@ -187,8 +210,8 @@ function send(channel, payload) {
   if (alive(win)) win.webContents.send(channel, payload);
 }
 
-// Упал рендер окна — поднимаем его заново; если падает снова и снова, не крутим цикл
-function reloadOnCrash(w, label, file) {
+// Упал рендер окна — поднимаем его заново; если падает снова и снова, не крутим цикл (onGiveUp)
+function reloadOnCrash(w, label, file, onGiveUp) {
   const crashes = [];
   w.webContents.on('render-process-gone', (_e, d) => {
     if (quitting || w.isDestroyed()) return;
@@ -196,7 +219,7 @@ function reloadOnCrash(w, label, file) {
     crashes.push(now);
     while (now - crashes[0] > 60 * 1000) crashes.shift();
     console.error(`окно ${label}: рендер упал (${d && d.reason}), ${crashes.length > 3 ? 'больше не поднимаем' : 'перезагружаем'}`);
-    if (crashes.length > 3) return;
+    if (crashes.length > 3) { if (onGiveUp) onGiveUp(); return; }
     setTimeout(() => { if (!quitting && !w.isDestroyed()) w.loadFile(file); }, 500);
   });
 }
@@ -209,10 +232,18 @@ function clampToScreen(b) {
   return { x: Math.round(x), y: Math.round(y), width: b.width, height: b.height };
 }
 
+// Перетаскивание окончено (или оборвано падением рендера): таймер moveDrag больше не двигает окно
+function stopDrag() {
+  if (!drag) return false;
+  clearInterval(drag.timer);
+  drag = null;
+  return true;
+}
+
 function createWindow() {
   const [w, h] = size();
-  const [x, y] = validPos(store.pos, w, h) || defaultPos(w, h);
-  win = new BrowserWindow({
+  const [x, y] = fitPos(store.pos, w, h) || defaultPos(w, h);
+  const me = new BrowserWindow({
     x, y, width: w, height: h,
     transparent: true, frame: false, resizable: false, maximizable: false, minimizable: false,
     fullscreenable: false, hasShadow: false, skipTaskbar: true, alwaysOnTop: true, show: false,
@@ -222,6 +253,7 @@ function createWindow() {
       contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false,
     },
   });
+  win = me;
   win.setAlwaysOnTop(true, 'floating');
   // skipTransformProcessType: без него на macOS окна и Dock моргают при смене типа процесса
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
@@ -230,19 +262,46 @@ function createWindow() {
   if (hidden) win.webContents.setBackgroundThrottling(true);
   const page = path.join(__dirname, 'renderer', 'index.html');
   win.loadFile(page);
-  reloadOnCrash(win, 'жабы', page);
+  // сдались после частых падений: пустое окно поверх всех не держим, в трее — «Перезапустить жабу»
+  reloadOnCrash(win, 'жабы', page, () => { if (!me.isDestroyed()) me.hide(); rebuildMenu(true); });
+  // рендер упал посреди перетаскивания: drag-end уже не придёт
+  win.webContents.on('render-process-gone', () => { if (win === me) stopDrag(); });
   win.webContents.on('did-finish-load', () => {
-    win.webContents.setZoomFactor(settings.scale);
+    if (win !== me) return;
+    // новый рендер начинает с «клики насквозь»; main должен быть в том же состоянии
+    if (!drag) me.setIgnoreMouseEvents(true, { forward: true });
+    me.webContents.setZoomFactor(settings.scale);
     send('settings', settings);
     send('view', curPet().view(curNow()));
   });
-  win.once('ready-to-show', () => { if (!hidden) win.showInactive(); });
+  win.once('ready-to-show', () => { if (!hidden && win === me) me.showInactive(); });
   // Cmd+W (меню «Окно») не должен уничтожать жабу — только прятать; закрывается она при выходе
   win.on('close', (e) => { if (!quitting) { e.preventDefault(); setHidden(true); } });
-  win.on('closed', () => { win = null; });
+  win.on('closed', () => { if (win === me) win = null; });
+}
+
+// Окно жабы мертво (рендер упал и больше не поднимается) — создаём его заново
+function ensureWin() {
+  if (quitting || alive(win)) return;
+  stopDrag();
+  const old = win;
+  win = null;
+  if (old && !old.isDestroyed()) old.destroy();
+  createWindow();
+  rebuildMenu(true);
+}
+
+// Окно целиком на экране после смены мониторов, разрешения или рабочей области
+function keepOnScreen() {
+  if (!win || win.isDestroyed() || drag) return;
+  const b = win.getBounds();
+  const p = fitPos([b.x, b.y], b.width, b.height);
+  if (!p) return resetPosition();
+  if (p[0] !== b.x || p[1] !== b.y) { win.setPosition(p[0], p[1]); saveSoon(); }
 }
 
 function resetPosition() {
+  ensureWin();
   if (!win) return;
   const [w, h] = size();
   const [x, y] = defaultPos(w, h);
@@ -271,6 +330,7 @@ function showWin(v) {
 function setHidden(v) {
   hidden = v;
   if (film) film.wasHidden = v;   // во время съёмки — что вернуть после неё
+  if (!v) ensureWin();
   if (!win) return;
   showWin(!hidden);
   rebuildMenu(true);
@@ -359,37 +419,46 @@ const age = (min) => Core.fmtDur(min);
 
 // Таймеры воды и разминки повторяются каждый своё nagEvery, и вместе выходит чаще.
 // Громко («ква» и уведомление) — не чаще раза в nagEvery; остальные напоминания тихие (quiet)
-let lastNagAt = -Infinity;
+// Системное уведомление — одно на тик: если хоть одно напоминание тика его заслуживает (жаба спрятана
+// или её игнорируют, nag ≥ 2), в нём тексты всех напоминаний тика. Повтор после «Позже» (core: ev.snoozed) —
+// только облачко, тихо (решение ведущего, круг 4)
+let lastNagAt = -Infinity, nagNote = null;
 
-function handleEvent(ev) {
+function nagNotify(ev, batch) {
+  const now = Date.now();
+  if (!nagNote || now - nagNote.at > 1500 || nagNote.done) return;
+  const list = (batch || [ev]).filter((e) => e && e.type === 'remind' && !e.snoozed);
+  if (!list.some((e) => hidden || e.nag >= 2)) return;
+  nagNote.done = true;
+  const v = pet.view(now);
+  const both = (v.needs && v.needs.water && v.needs.move) || (list.some((e) => e.kind === 'water') && list.some((e) => e.kind === 'move'));
+  const title = both ? '💧🤸 Пора попить и размяться' : ev.kind === 'water' ? '💧 Пора попить воды' : '🤸 Пора размяться';
+  notify(title, list.map((e) => (e.tip ? e.text + '\n' + e.tip : e.text)).join('\n'));
+}
+
+function handleEvent(ev, batch) {
   if (ev.type === 'remind' && !film) {
     const now = Date.now();
-    if (now - lastNagAt < settings.nagEvery * 60 * 1000 - 1500) ev = Object.assign({}, ev, { quiet: true });
-    else lastNagAt = now;
+    // повтор после «Позже»: облачко без «ква» и без уведомления
+    if (ev.snoozed) ev = Object.assign({}, ev, { quiet: true });
+    else if (now - lastNagAt < settings.nagEvery * 60 * 1000 - 1500) ev = Object.assign({}, ev, { quiet: true });
+    else { lastNagAt = now; nagNote = { at: now, done: false }; }
   }
   // на съёмке — фиксированные фразы сценария, как в браузерном демо
   if (film && film.director && typeof film.director.line === 'function') film.director.line(ev);
   send('event', ev);
   if (film) return;
   if (ev.type === 'remind') {
-    // Системное уведомление — если жаба спрятана или её игнорируют
-    if (!ev.quiet && (hidden || ev.nag >= 2)) {
-      const v = pet.view(Date.now());
-      const both = v.needs && v.needs.water && v.needs.move;
-      const title = both ? '💧🤸 Пора попить и размяться' : ev.kind === 'water' ? '💧 Пора попить воды' : '🤸 Пора размяться';
-      notify(title, ev.tip ? ev.text + '\n' + ev.tip : ev.text);
-    }
+    if (!ev.snoozed) nagNotify(ev, batch);
   } else if (ev.type === 'morning' && hidden) {
     notify('🐸 Доброе утро', ev.text);
   } else if (ev.type === 'critical') {
     notify(ev.kind === 'water' ? '🥵 Жабка при смерти от жажды' : '🗿 Жабка почти камень', ev.text || 'Ещё чуть-чуть — и всё. Спаси её!');
   } else if (ev.type === 'death') {
+    // своими словами: фраза смерти уже стоит в облачке (r1-05-10)
     const n = ev.generation || 1;
-    const title = ev.cause === 'stone' ? `💀 Жабка #${n} окаменела` : `💀 Жабка #${n} засохла в изюм`;
-    const tail = ev.cause === 'stone'
-      ? 'Теперь это памятник твоему коду. Без разминки.'
-      : '404: Water Not Found. Покойся с миром.';
-    notify(title, `Прожила ${age(ev.ageMin)}. ${tail}\nВ меню: 🥚 Высидеть новую жабу`);
+    const how = ev.cause === 'stone' ? 'Слишком долго без разминки — окаменела' : 'Слишком долго без воды — засохла';
+    notify(`💀 RIP, Жабка #${n}`, `${how}. Прожила ${age(ev.ageMin)}.\nВ меню: 🥚 Высидеть новую жабу`);
     rebuildMenu(true);
   } else if (ev.type === 'reborn') {
     rebuildMenu(true);
@@ -471,8 +540,15 @@ function act(type, opts = {}) {
   if (ev) handleEvent(ev);
   checkAchievements((ev ? [ev] : []).concat(extra));
   send('view', p.view(now));
-  if (!film) { rebuildMenu(true); saveSoon(); }
-  pushApp();
+  if (!film) saveSoon();
+  refreshSoon();
+}
+
+// меню и окна приложения после действия — не чаще раза в 100 мс (поток действий не вешает main)
+let refreshTimer = null;
+function refreshSoon() {
+  if (refreshTimer) return;
+  refreshTimer = setTimeout(() => { refreshTimer = null; if (!film) rebuildMenu(true); pushApp(); }, 100);
 }
 
 function idleNow(now) {
@@ -485,7 +561,7 @@ function tick() {
   if (film) return; // на съёмке время симулированное
   const now = Date.now();
   const events = pet.tick(now, idleNow(now));
-  events.forEach(handleEvent);
+  events.forEach((e) => handleEvent(e, events));
   checkAchievements(events);
   send('view', pet.view(now));
   updateTray();
@@ -537,7 +613,7 @@ function filmReset() {
 function filmTick(dtMs, idleSec) {
   film.now += dtMs;
   const events = film.pet.tick(film.now, idleSec || 0);
-  events.forEach(handleEvent);
+  events.forEach((e) => handleEvent(e));
   checkAchievements(events);
 }
 
@@ -567,7 +643,10 @@ function startFilm(name) {
     console.error(`сценарий «${name}» недоступен`);
     return;
   }
+  // смена сценария без ⏹: кадр чистим как после stopFilm, иначе титр старого висит над новым
+  const switching = !!film;
   stopFilm(true);
+  if (switching) send('event', { type: 'filmEnd' });
   // спрятанную жабу показываем только на время съёмки
   film = { name, now: Date.now(), pet: null, A: null, settings: null, director: null, wasHidden: hidden };
   filmReset();
@@ -642,16 +721,27 @@ function setSetting(key, val) {
     if (!Number.isFinite(val) || val <= 0) return;
     val = clampSetting(key, val);
   } else val = !!val;
+  if (settings[key] === val) return;   // то же значение: ни записи, ни перестройки меню
   settings[key] = val;
   pet.setSettings(settings);
   if (film) { film.settings.scale = settings.scale; film.settings.sound = settings.sound; }
   if (key === 'scale') applyScale();
   if (key === 'launchAtLogin') applyLogin();
-  send('settings', settings);
-  send('view', curPet().view(curNow()));
-  rebuildMenu(true);
-  save();
-  pushApp();
+  // поток app:set (тысячи сообщений) не вешает main: меню, окна и файл — одной пачкой
+  settingsSoon();
+  saveSoon();
+}
+
+let settingsTimer = null;
+function settingsSoon() {
+  if (settingsTimer) return;
+  settingsTimer = setTimeout(() => {
+    settingsTimer = null;
+    send('settings', settings);
+    send('view', curPet().view(curNow()));
+    rebuildMenu(true);
+    pushApp();
+  }, 30);
 }
 
 const inApplications = () => {
@@ -713,14 +803,20 @@ function filmMenu() {
   return items;
 }
 
-function rebuildMenu(force) {
+// tray.setContextMenu удерживает каждое переданное меню до выхода (≈20 КБ кучи main на пересборку, r3-09).
+// Поэтому: одинаковое меню не ставим вовсе; если поменялись только минуты в подписях — не чаще раза
+// в MENU_MINUTES_EVERY, а свежие минуты подставляем, когда курсор наводят на значок (mouse-enter, macOS)
+const MENU_MINUTES_EVERY = 10 * 60 * 1000;
+let menuKey = '', menuAt = 0, menuStale = false;
+const menuShape = (items) => items.map((i) => [i.type || '', i.label || '', i.enabled !== false, !!i.checked, i.submenu ? menuShape(i.submenu) : 0]);
+
+function rebuildMenu(force, fresh) {
   if (!tray) return;
   const now = Date.now();
   const v = pet.view(now);
   const dead = v.life === 'dead';
-  const stamp = [v.waterLeftMin, v.moveLeftMin, v.sitMin, v.paused, v.pausedLeftMin, v.day.drinks, v.day.breaks, hidden, v.life, !!film].join('|');
-  if (!force && stamp === menuStamp) return;
-  menuStamp = stamp;
+  // структура и счётчики меню; минуты до воды/разминки сюда не входят
+  const stamp = [!!(v.needs && v.needs.water), !!(v.needs && v.needs.move), v.paused, v.day.drinks, v.day.breaks, hidden, v.life, v.generation, !!film, film && film.name, alive(win)].join('|');
   const min = fmtMin;
   const status = dead
     ? [
@@ -733,6 +829,7 @@ function rebuildMenu(force) {
     ];
   const template = [
     ...(film ? [{ label: `🎬 Идёт съёмка: ${film.name}`, enabled: false }] : []),
+    ...(alive(win) ? [] : [{ label: '🔄 Перезапустить жабу', click: () => { ensureWin(); if (hidden) setHidden(false); } }, { type: 'separator' }]),
     ...status,
     { label: `Сегодня: стаканов ${v.day.drinks}, перерывов ${v.day.breaks}, за компом ${min(v.day.coding)}`, enabled: false },
     { type: 'separator' },
@@ -756,6 +853,10 @@ function rebuildMenu(force) {
   ];
   // действия «попил/размялся/высидеть» в меню всегда про реальную жабу, а act на съёмке — про съёмочную
   if (film) template.forEach((i) => { if (i.click && /попил|размялся|Пауза|Снять паузу|Высидеть/.test(i.label)) i.enabled = false; });
+  const key = JSON.stringify(menuShape(template));
+  if (key === menuKey) { menuStale = false; return; }
+  if (!force && !fresh && stamp === menuStamp && now - menuAt < MENU_MINUTES_EVERY) { menuStale = true; return; }
+  menuKey = key; menuStamp = stamp; menuAt = now; menuStale = false;
   tray.setContextMenu(Menu.buildFromTemplate(template));
 }
 
@@ -786,9 +887,8 @@ ipcMain.on('drag-start', pet$(() => {
 }));
 ipcMain.on('drag-end', pet$(() => {
   if (!drag) return;
-  clearInterval(drag.timer);
   const moved = win && (() => { const [x, y] = win.getPosition(); return Math.abs(x - drag.wx) + Math.abs(y - drag.wy) > 4; })();
-  drag = null;
+  stopDrag();
   if (moved) act('dragged');
   else saveSoon();
 }));
@@ -843,17 +943,19 @@ app.whenReady().then(() => {
 
   tray = new Tray(trayImage());
   tray.setIgnoreDoubleClickEvents(true);
+  // меню вот-вот откроют: подписи с минутами должны быть свежими
+  const freshMenu = () => { if (menuStale) rebuildMenu(false, true); };
+  tray.on('mouse-enter', freshMenu);
+  tray.on('mouse-move', freshMenu);
   rebuildMenu(true);
   updateTray();
 
   powerMonitor.on('lock-screen', () => { locked = true; lockedAt = Date.now(); });
   powerMonitor.on('unlock-screen', () => { locked = false; });
   powerMonitor.on('suspend', () => { save(); });
-  screen.on('display-removed', () => {
-    if (!win) return;
-    const b = win.getBounds();
-    if (!validPos([b.x, b.y], b.width, b.height)) resetPosition();
-  });
+  screen.on('display-removed', keepOnScreen);
+  screen.on('display-added', keepOnScreen);
+  screen.on('display-metrics-changed', keepOnScreen);
 
   // Онбординг при первом запуске
   if ((firstRun || !onboarded) && !devEnv('FROG_SNAPSHOT') && !process.env.FROG_SHOWCASE) {
