@@ -1,0 +1,614 @@
+[
+  {
+    "finding": "r1-02-01",
+    "r2verdict": "confirmed(F9)",
+    "audit": "fixed",
+    "evidence": "README.md:88-89 и index.html:316-317: отдельные шаги для Sequoia 15+ и Sonoma 14, запуск из «Программ», xattr -dr com.apple.quarantine."
+  },
+  {
+    "finding": "r1-02-02",
+    "r2verdict": "confirmed(F4)",
+    "audit": "fixed",
+    "evidence": "npm run qa:ui зелёный (облачко: 87 реплик не обрезаны). Мутация: line-clamp .tip 3→1 в копии style.css (QA_ROOT) → ui-check падает «35 обрезано»."
+  },
+  {
+    "finding": "r1-02-03",
+    "r2verdict": "confirmed(F8)",
+    "audit": "fixed",
+    "evidence": "Playwright welcome.html слайд 1: «👆 наведи на меня — появятся 💧 🤸 🏆», «🐸 меню — в меню-баре, в Dock меня нет»."
+  },
+  {
+    "finding": "r1-02-04",
+    "r2verdict": "confirmed(F1) + confirmed(F3) + confirmed(F9)",
+    "audit": "fixed",
+    "evidence": "Повтор repro из r1: напоминания 45,50,60,70…110 (вода+движение вместе раз в 10 мин), раньше каждые 5. pet.js:328/332 не квакает при ev.quiet; main handleEvent: громко не чаще nagEvery, одно уведомление на оба (статически по HEAD:app/main.js (e2e не запускал по условию задачи); ). Мутация: убрал блок синхронизации в копии core → test/core.test.js «r1-02-04» падает."
+  },
+  {
+    "finding": "r1-02-05",
+    "r2verdict": "confirmed(F6)",
+    "audit": "fixed",
+    "evidence": "Playwright демо ×60, «Отойти» 11 с (23:58→00:09) → «С возвращением! Перерыв 11 мин засчитан»."
+  },
+  {
+    "finding": "r1-02-06",
+    "r2verdict": "none",
+    "audit": "missing",
+    "evidence": "Вердикта нет ни в одном r2-файле. Воспроизводится: critical move + позорная ачивка в одном тике → #bubble «crit under-toast», opacity 0 первые ~3.5 с (pet.js:134, 1122)."
+  },
+  {
+    "finding": "r1-02-07",
+    "r2verdict": "none",
+    "audit": "missing",
+    "evidence": "Вердикта нет. Воспроизводится частично: смерть stone + 3 позорных тоста → надгробие целиком 6.6 с, облачко «🥚 Новая жаба» без under-toast только на 11.0 с (без тостов 6.8 с). Стало лучше за счёт сжатия таймлайна F5, но ожидание под тостами осталось."
+  },
+  {
+    "finding": "r1-02-08",
+    "r2verdict": "confirmed(F1) + confirmed(F9)",
+    "audit": "fixed",
+    "evidence": "node: жаба 10:00, 20 мин тиков, +3 ч → waterLeftMin=0, remind:water на следующем тике (20 с). Мутация: вернул 0.9 интервала в копии core → тест «r1-02-08» падает. README/лендинг: «попросит воды в ближайшие минуты» — согласовано."
+  },
+  {
+    "finding": "r1-02-09",
+    "r2verdict": "unknown(F1)",
+    "audit": "real-unknown",
+    "evidence": "Поведение «Позже» = игнор — действительно решение продукта; варианты в вердикте F1 разумные."
+  },
+  {
+    "finding": "r1-02-10",
+    "r2verdict": "confirmed(F9)",
+    "audit": "fixed",
+    "evidence": "grep «50/10»: нет в index.html, README.md, settings.html; остался только тег «50/10» в docs/shorts.md:169 (хештеги, не обещание)."
+  },
+  {
+    "finding": "r1-03-01",
+    "r2verdict": "confirmed(F4)",
+    "audit": "fixed",
+    "evidence": "Скриншоты coding/dry0.65 на #111 (shots/sheet.png): ореола за крышкой нет, язык розовый, на камне свечения нет."
+  },
+  {
+    "finding": "r1-03-02",
+    "r2verdict": "confirmed(F5)",
+    "audit": "fixed",
+    "evidence": "Кадры вылупления 4.2–5.0 с (shots/reb-sheet.png): глаза и рот открыты, сердечки по бокам, кольца нет; r2-F5.check.js зелёный."
+  },
+  {
+    "finding": "r1-03-03",
+    "r2verdict": "confirmed(F4)",
+    "audit": "fixed",
+    "evidence": "Скриншоты thinking vs idle: у thinking облачко мысли «•••», взгляд вбок, другой рот."
+  },
+  {
+    "finding": "r1-03-04",
+    "r2verdict": "confirmed(F5)",
+    "audit": "fixed",
+    "evidence": "r2-F5.check.js: лента/чип внутри карточки и череп не под текстом для bad/secret/good — 29/0 зелёный (проверка исправителя, мутацию не делал)."
+  },
+  {
+    "finding": "r1-03-05",
+    "r2verdict": "confirmed(F4)",
+    "audit": "fixed",
+    "evidence": "Дубль r1-02-02, та же проверка ui-check и мутация."
+  },
+  {
+    "finding": "r1-03-06",
+    "r2verdict": "confirmed(F4) + confirmed(F5)",
+    "audit": "fixed",
+    "evidence": "Playwright: смерть stone → tombUp=1 на 6.56 с, облачко RIP видно на 6.77 с (после надгробия)."
+  },
+  {
+    "finding": "r1-03-07",
+    "r2verdict": "confirmed(F4) + confirmed(F5)",
+    "audit": "fixed",
+    "evidence": "Скриншоты stone=1 на тёмном/светлом/синем (shots/stone-sheet.png): плотный серый камень с контуром. Остаток: дуга наушников остаётся тёмной (handoff F5 не выполнен, мелочь)."
+  },
+  {
+    "finding": "r1-03-08",
+    "r2verdict": "confirmed(F5)",
+    "audit": "fixed",
+    "evidence": "Кадры 1.2–1.6 с (shots/reb-sheet.png): угловатые серые осколки; r2-F5.check.js: зелёных пикселей <8%."
+  },
+  {
+    "finding": "r1-03-09",
+    "r2verdict": "none",
+    "audit": "missing",
+    "evidence": "Вердикта нет. На #111 (shots/sheet.png dry09-dark, tomb-dry-dark) тёмно-синие наушники и коричневый пар над жабой по-прежнему почти сливаются с фоном."
+  },
+  {
+    "finding": "r1-03-10",
+    "r2verdict": "confirmed(F5)",
+    "audit": "fixed",
+    "evidence": "r2-F5.check.js: осколки скорлупы на столе — зелёный (проверка исправителя)."
+  },
+  {
+    "finding": "r1-04-01",
+    "r2verdict": "confirmed(F5) + confirmed(F6)",
+    "audit": "fixed",
+    "evidence": "Playwright 540×960, все 4 сценария: надгробие целиком через 6.3–6.6 с после смерти, revive через 3.6–4.6 с после этого (short 19.0/25.3/28.9, 55.6/62.1/66.7; water 20.0/26.3/30.0; stone 19.5/26.0/30.6; tour 51.2/57.5/61.1, 84.5/91.1/95.6)."
+  },
+  {
+    "finding": "r1-04-02",
+    "r2verdict": "confirmed(F3) + confirmed(F4) + confirmed(F6)",
+    "audit": "still-broken",
+    "evidence": "Титры теперь доходят (main filmCtl.caption, pet.js case caption), но #caption в окне 260 px режет до 2 строк: 6 из 29 титров сценариев обрезаны многоточием, в т.ч. хук «Моя жаба умрёт, если я не пью воду и не встаю 💀» → «…не вста…» (shots/caption-hook.png) и «Жабка — питомец-программист для macOS 🐸». Оговорка: шрифт Linux Chromium; ui-check титры не проверяет."
+  },
+  {
+    "finding": "r1-04-03",
+    "r2verdict": "confirmed(F6) + confirmed(F9)",
+    "audit": "fixed",
+    "evidence": "short 80 с, docs/shorts.md синхронизирован (тест showcase сверяет длины и титры). Тест ослаблен с «~50±8 с» до «≤80 с», но это следует из согласованного решения, а не подгонка."
+  },
+  {
+    "finding": "r1-04-04",
+    "r2verdict": "confirmed(F6)",
+    "audit": "fixed",
+    "evidence": "Браузер: напоминания висят 2.1–6.2 с и не перебиваются (short 2.7/2.1/3.1 с, tour 2.7/3.5/6.1/6.2 с)."
+  },
+  {
+    "finding": "r1-04-05",
+    "r2verdict": "confirmed(F6)",
+    "audit": "fixed",
+    "evidence": "Браузер: после каждого revive первая реплика — «Ква! Я Жабка #N…», приветствие до конца сценария во всех 4."
+  },
+  {
+    "finding": "r1-04-06",
+    "r2verdict": "confirmed(F6)",
+    "audit": "fixed",
+    "evidence": "Браузер: облачко critical под тостом 0–0.1 с во всех сценариях (water/stone 0); тосты только на смертях."
+  },
+  {
+    "finding": "r1-04-07",
+    "r2verdict": "confirmed(F6)",
+    "audit": "fixed",
+    "evidence": "Браузер: последний титр — CTA после вылупления (water 36.8 с «Жабка для macOS. Попей воды 💧», stone 37.3 с «Жабка для macOS 🐸»)."
+  },
+  {
+    "finding": "r1-04-08",
+    "r2verdict": "confirmed(F1) + confirmed(F6)",
+    "audit": "fixed",
+    "evidence": "Браузер: два прогона short дают одинаковые 14 текстов облачка; core createPet(…, rnd) детерминирован (node); main filmReset с seeded(1017) и director.line (статически по HEAD:app/main.js (e2e не запускал по условию задачи);)."
+  },
+  {
+    "finding": "r1-04-09",
+    "r2verdict": "confirmed(F6)",
+    "audit": "fixed",
+    "evidence": "Браузер: пересечений прямоугольников титра и тоста 0 во всех сценариях; tour: титр «6 минут» = облачко «Перерыв 6 мин»."
+  },
+  {
+    "finding": "r1-04-10",
+    "r2verdict": "confirmed(F6)",
+    "audit": "fixed",
+    "evidence": "Браузер: плашка .demo-note на съёмке не появляется ни разу (demo.js handle: return при director). Карточка демо оставлена осознанно (кнопка ⏹)."
+  },
+  {
+    "finding": "r1-04-11",
+    "r2verdict": "confirmed(F6)",
+    "audit": "fixed",
+    "evidence": "Браузер: часы HUD «11:00» с первых кадров, титр-хук виден с ~0.8 с от goto."
+  },
+  {
+    "finding": "r1-04-12",
+    "r2verdict": "confirmed(F5) + confirmed(F6)",
+    "audit": "fixed",
+    "evidence": "r2-F5.check.js «reborn чистит пыль» зелёный; в кадрах вылупления пыли нет (shots/reb-sheet.png)."
+  },
+  {
+    "finding": "r1-04-13",
+    "r2verdict": "confirmed(F6)",
+    "audit": "fixed",
+    "evidence": "Браузер 9:16: HUD y 36–65 из 960, 15 px."
+  },
+  {
+    "finding": "r1-04-14",
+    "r2verdict": "confirmed(F3) + confirmed(F6)",
+    "audit": "fixed",
+    "evidence": "статически по HEAD:app/main.js (e2e не запускал по условию задачи); filmMenu дописывает «(~N с)» только если его нет в title; в showcase.js title без длительностей."
+  },
+  {
+    "finding": "r1-04-15",
+    "r2verdict": "unknown(F5) + unknown(F6)",
+    "audit": "real-unknown",
+    "evidence": "Замер fps без GPU в headless не говорит о Mac; F5 показал 57–60 fps на окне 260×320 — честный unknown."
+  },
+  {
+    "finding": "r1-05-01",
+    "r2verdict": "confirmed(F1)",
+    "audit": "fixed",
+    "evidence": "node: 200 прогонов × 300 мин — 0 повторов подряд из 2800 напоминаний; дубля в PHRASES.poke нет. Мутация: отключил защиту в копии core → тест «r1-05-01» падает."
+  },
+  {
+    "finding": "r1-05-02",
+    "r2verdict": "confirmed(F7)",
+    "audit": "fixed",
+    "evidence": "r2-F7.check.js зелёный. Мутация: вернул «разминок и перерывов» в копии trophies.js → 6 проверок «breaks plural» падают."
+  },
+  {
+    "finding": "r1-05-03",
+    "r2verdict": "confirmed(F2)",
+    "audit": "fixed",
+    "evidence": "achievements.js balanced.desc = «…6 перерывов…» — текст совпадает с условием."
+  },
+  {
+    "finding": "r1-05-04",
+    "r2verdict": "confirmed(F3)",
+    "audit": "fixed",
+    "evidence": "статически по HEAD:app/main.js (e2e не запускал по условию задачи); updateTray: «пора пить воду»/«пора размяться», минимум «через 1 мин»."
+  },
+  {
+    "finding": "r1-05-05",
+    "r2verdict": "confirmed(F1) + confirmed(F5) + confirmed(F6) + confirmed(F7)",
+    "audit": "still-broken",
+    "evidence": "Ядро исправлено: say(paused,240) → «Пауза на 4 ч», «Сидишь 1 ч 50 мин»; main/death/demo берут Core.fmtDur. Остаток: trophies.js:76 держит свой fmtDur, расходится с core от 5 дней (core «7 дней», трофеи «7 дней 3 ч» — надгробие и кладбище снова разные); pet.js:1131 подсказка «Сидишь ${sitMin} мин». Мелочь."
+  },
+  {
+    "finding": "r1-05-06",
+    "r2verdict": "confirmed(F1)",
+    "audit": "fixed",
+    "evidence": "node: самая длинная фраза смерти при gen=999 — 63 символа (≤64)."
+  },
+  {
+    "finding": "r1-05-07",
+    "r2verdict": "confirmed(F1) + unknown(F2) + unknown(F8) + unknown(F9)",
+    "audit": "real-unknown",
+    "evidence": "Род обращения — вопрос голоса продукта, затрагивает все зоны; нейтральное поправлено частично (core back, welcome, settings, лендинг)."
+  },
+  {
+    "finding": "r1-05-08",
+    "r2verdict": "confirmed(F1)",
+    "audit": "regressed",
+    "evidence": "В core исправлено, но новые фиксированные реплики съёмки F6 вернули ту же фразу: showcase.js:51 'death:stone': «FATAL: frog #{gen} hardened. Слишком долго сидели 🪦» — видна в облачке на смерти в stone/short (браузер, film-stone 26.0 с). Это ровно тот кадр, что идёт в ролик."
+  },
+  {
+    "finding": "r1-05-09",
+    "r2verdict": "unknown(F2) + unknown(F6) + unknown(F9)",
+    "audit": "real-unknown",
+    "evidence": "Хук против тона — решение продукта; название закреплено тестом DEFS и разнесено по лендингу/шортсам."
+  },
+  {
+    "finding": "r1-05-10",
+    "r2verdict": "confirmed(F1) + confirmed(F7)",
+    "audit": "still-broken",
+    "evidence": "Эпитафии трофеев заменены (trophies.js:284-289). Остаток: уведомление о смерти main.js:391 «404: Water Not Found. Покойся с миром.» дублирует core death_dry[0] и реплику съёмки — handoff F7→F3 не выполнен."
+  },
+  {
+    "finding": "r1-05-11",
+    "r2verdict": "confirmed(F1) + confirmed(F6) + confirmed(F7)",
+    "audit": "fixed",
+    "evidence": "grep: «и я stack trace», «погашен ею», «Работала на её машине», «кэш в npm», «кодю» отсутствуют."
+  },
+  {
+    "finding": "r1-05-12",
+    "r2verdict": "confirmed(F6) + confirmed(F8) + confirmed(F9)",
+    "audit": "fixed",
+    "evidence": "(а) 50/10 убрано, (б) README «~80 с» = SCRIPTS.short.duration 80, (в) текст «в ближайшие минуты» согласован с core."
+  },
+  {
+    "finding": "r1-05-13",
+    "r2verdict": "confirmed(F7)",
+    "audit": "fixed",
+    "evidence": "Playwright trophies.html без frogApp: 40 карточек, «Кит-девелопер»/«Agile»/«Чит-код» нет."
+  },
+  {
+    "finding": "r1-05-14",
+    "r2verdict": "confirmed(F2) + confirmed(F5) + confirmed(F7)",
+    "audit": "fixed",
+    "evidence": "toast.js RAR = обычная/редкая/эпическая/легендарная; HIDDEN.desc «Секретная ачивка. Жаба не скажет 🤫», trophies берёт его же."
+  },
+  {
+    "finding": "r1-05-15",
+    "r2verdict": "confirmed(F7)",
+    "audit": "fixed",
+    "evidence": "Playwright кладбище: «🥵 засохших: 1 · 🗿 окаменевших: 0»."
+  },
+  {
+    "finding": "r1-05-16",
+    "r2verdict": "confirmed(F1) + confirmed(F2) + confirmed(F6) + confirmed(F7)",
+    "audit": "fixed",
+    "evidence": "«...» нет в PHRASES и репликах showcase, «DDoS почек», «1,5 ч» (r2-F7.check.js). «99.9%» оставлен с обоснованием."
+  },
+  {
+    "finding": "r1-05-17",
+    "r2verdict": "confirmed(F6)",
+    "audit": "fixed",
+    "evidence": "Playwright: клик по 🐸 в демо-меню → 82 символа."
+  },
+  {
+    "finding": "r1-06-01",
+    "r2verdict": "confirmed(F1)",
+    "audit": "fixed",
+    "evidence": "qa/findings/r1-06.test.js (не менялся с c99ab1f) — ok 1."
+  },
+  {
+    "finding": "r1-06-02",
+    "r2verdict": "confirmed(F1)",
+    "audit": "fixed",
+    "evidence": "r1-06.test.js ok 2; node: после tick(NaN) day.date = 2026-10-20. Мутация: убрал guard в копии core → тест «r1-06-02» и фазз (view.glass=NaN) падают."
+  },
+  {
+    "finding": "r1-06-03",
+    "r2verdict": "confirmed(F1)",
+    "audit": "fixed",
+    "evidence": "r1-06.test.js ok 3; node waterEvery=3, тики 4.5 мин → remind, critical, death. Мутация: убрал «&& st.crit[kind]» → тест «r1-06-03» падает. Изменение в старом тесте (run 3→4 мин) обосновано."
+  },
+  {
+    "finding": "r1-06-04",
+    "r2verdict": "confirmed(F1)",
+    "audit": "fixed",
+    "evidence": "r1-06.test.js ok 4; node: мёртвой жабе back «…мне он уже не поможет 🪦», resumed «…всё ещё памятник»."
+  },
+  {
+    "finding": "r1-06-05",
+    "r2verdict": "confirmed(F2)",
+    "audit": "fixed",
+    "evidence": "r1-06.test.js ok 5, ok 6 (тесты автора находки)."
+  },
+  {
+    "finding": "r1-06-06",
+    "r2verdict": "confirmed(F2)",
+    "audit": "fixed",
+    "evidence": "r1-06.test.js ok 7."
+  },
+  {
+    "finding": "r1-06-07",
+    "r2verdict": "confirmed(F2)",
+    "audit": "fixed",
+    "evidence": "r1-06.test.js ok 8; balanced.desc согласован."
+  },
+  {
+    "finding": "r1-06-08",
+    "r2verdict": "unknown(F2)",
+    "audit": "real-unknown",
+    "evidence": "Воспроизводится (r1-06.test.js r1-06-09 всё ещё падает), но это выбор продукта: пороги ачивок vs настройки."
+  },
+  {
+    "finding": "r1-06-09",
+    "r2verdict": "unknown(F1) + unknown(F2)",
+    "audit": "real-unknown",
+    "evidence": "Возраст по стенным часам — осознанное правило «жаба не умирает без тебя»; решать продукту."
+  },
+  {
+    "finding": "r1-06-10",
+    "r2verdict": "confirmed(F10)",
+    "audit": "fixed",
+    "evidence": "FUZZ_CORE=копия core без st.crit.water=false в drink() → фазз падает «смерть (dry) без свежего предупреждения critical» (seed 1001)."
+  },
+  {
+    "finding": "r1-06-11",
+    "r2verdict": "confirmed(F10)",
+    "audit": "fixed",
+    "evidence": "FUZZ_CORE=копия без NaN-guard → фазз падает «view.glass=NaN» (seed 1003); test/fuzz.test.js: шаги freeze/pokes, DST Europe/Berlin, враждебные настройки — есть."
+  },
+  {
+    "finding": "r1-07-01",
+    "r2verdict": "confirmed(F3)",
+    "audit": "fixed",
+    "evidence": "статически по HEAD:app/main.js (e2e не запускал по условию задачи); reloadOnCrash: render-process-gone → loadFile через 0.5 с, ≤3 раз/мин; send() не шлёт в isCrashed(). Тест qa/e2e/chaos.js проверяет мост после forcefullyCrashRenderer."
+  },
+  {
+    "finding": "r1-07-02",
+    "r2verdict": "confirmed(F3)",
+    "audit": "fixed",
+    "evidence": "статически по HEAD:app/main.js (e2e не запускал по условию задачи); applyScale → clampToScreen(workArea). Тест chaos.js onScreen."
+  },
+  {
+    "finding": "r1-07-03",
+    "r2verdict": "confirmed(F3)",
+    "audit": "fixed",
+    "evidence": "статически по HEAD:app/main.js (e2e не запускал по условию задачи); applyScale сдвигает drag.wx/wy на ту же величину. chaos.js проверяет и сохранённую pos."
+  },
+  {
+    "finding": "r1-07-04",
+    "r2verdict": "confirmed(F3)",
+    "audit": "fixed",
+    "evidence": "статически по HEAD:app/main.js (e2e не запускал по условию задачи); регэксп выключения на съёмке включает «Высидеть» (main.js:758); chaos.js проверяет enabled=false."
+  },
+  {
+    "finding": "r1-07-05",
+    "r2verdict": "confirmed(F3)",
+    "audit": "fixed",
+    "evidence": "статически по HEAD:app/main.js (e2e не запускал по условию задачи); openWindow уничтожает окно с isCrashed() и создаёт новое; chaos.js."
+  },
+  {
+    "finding": "r1-07-06",
+    "r2verdict": "confirmed(F3)",
+    "audit": "fixed",
+    "evidence": "статически по HEAD:app/main.js (e2e не запускал по условию задачи); film.wasHidden, save() пишет hidden:true на съёмке, stopFilm возвращает; chaos.js."
+  },
+  {
+    "finding": "r1-07-07",
+    "r2verdict": "confirmed(F3)",
+    "audit": "fixed",
+    "evidence": "статически по HEAD:app/main.js (e2e не запускал по условию задачи); startFilm/stopFilm вызывают updateTray(), title « 🎬»; chaos.js."
+  },
+  {
+    "finding": "r1-07-08",
+    "r2verdict": "confirmed(F3)",
+    "audit": "fixed",
+    "evidence": "статически по HEAD:app/main.js (e2e не запускал по условию задачи); queueAchNote копит 1.5 с и шлёт одно уведомление; nag.js фаза burst."
+  },
+  {
+    "finding": "r1-08-01",
+    "r2verdict": "confirmed(F8)",
+    "audit": "fixed",
+    "evidence": "Playwright 448×416 @1.25, слайд 4: ни один видимый элемент не выходит за .stage; r2-F8.check.js зелёный."
+  },
+  {
+    "finding": "r1-08-02",
+    "r2verdict": "confirmed(F8)",
+    "audit": "fixed",
+    "evidence": "Playwright: «Дальше →» 4.94:1, «Пропустить» 5.09:1; ui-check «контраст ≥4.5» зелёный."
+  },
+  {
+    "finding": "r1-08-03",
+    "r2verdict": "confirmed(F7)",
+    "audit": "fixed",
+    "evidence": "r2-F7.check.js (контраст всех текстов ≥4.5 в обеих темах) зелёный; проверка исправителя, выборочно не перемерял."
+  },
+  {
+    "finding": "r1-08-04",
+    "r2verdict": "confirmed(F7) + confirmed(F8)",
+    "audit": "fixed",
+    "evidence": "ui.css --muted #5f6a60 (5.55:1 по замеру F8), trophies --t-sub свой; r2-F8/F7 check зелёные."
+  },
+  {
+    "finding": "r1-08-05",
+    "r2verdict": "confirmed(F8)",
+    "audit": "fixed",
+    "evidence": "ui.css: --focus = зазор 2px + кольцо 2px var(--blue) (#1a6fbd, 5.09:1 к фону) на :focus-visible."
+  },
+  {
+    "finding": "r1-08-06",
+    "r2verdict": "confirmed(F7)",
+    "audit": "fixed",
+    "evidence": "Playwright: Enter на чипе «Позорные» → фокус остаётся на chip, aria-pressed=true."
+  },
+  {
+    "finding": "r1-08-07",
+    "r2verdict": "confirmed(F7)",
+    "audit": "fixed",
+    "evidence": "Playwright: ArrowRight на вкладке → tab-stats в фокусе и aria-selected; у 3 svg.chart есть aria-label."
+  },
+  {
+    "finding": "r1-08-08",
+    "r2verdict": "confirmed(F8)",
+    "audit": "fixed",
+    "evidence": "Playwright: Enter на «Пропустить» → фокус на #mHard, не BODY."
+  },
+  {
+    "finding": "r1-08-09",
+    "r2verdict": "confirmed(F8)",
+    "audit": "fixed",
+    "evidence": "Playwright: ArrowRight на «Хардкор» → фокус и aria-checked на «Добрый», слайд не листается; у точки aria-current."
+  },
+  {
+    "finding": "r1-08-10",
+    "r2verdict": "confirmed(F4) + confirmed(F5) + confirmed(F8)",
+    "audit": "fixed",
+    "evidence": "ui-check «reduced motion: нет бесконечных анимаций» и r2-F5.check.js «reduce: без конфетти» зелёные; на копии без фиксов F4 та же проверка падала (critShake/pulse/eggBtn)."
+  },
+  {
+    "finding": "r1-08-11",
+    "r2verdict": "confirmed(F8)",
+    "audit": "fixed",
+    "evidence": "Playwright settings: .seg aria-labelledby=lbl-waterEvery («Стакан воды каждые»), кнопка «30 мин», слайдер aria-valuetext «M, 100%»."
+  },
+  {
+    "finding": "r1-08-12",
+    "r2verdict": "confirmed(F7)",
+    "audit": "fixed",
+    "evidence": "Playwright: graveyard [null, …] и achievements [null, …] → без ошибок, могила отрисована."
+  },
+  {
+    "finding": "r1-08-13",
+    "r2verdict": "confirmed(F8)",
+    "audit": "fixed",
+    "evidence": "r2-F8.check.js зелёный. Мутация: Object.assign(S, d.settings) в копии settings.js → проверка падает {\"w\":\"0 мин\",\"pressed\":[0,0,0,0]}."
+  },
+  {
+    "finding": "r1-08-14",
+    "r2verdict": "confirmed(F4)",
+    "audit": "fixed",
+    "evidence": "Playwright: #bubble role=status aria-live=polite, при critical role=alert; aria-label у 💧🤸🏆."
+  },
+  {
+    "finding": "r1-09-01",
+    "r2verdict": "confirmed(F3) + confirmed(F4)",
+    "audit": "fixed",
+    "evidence": "ui-check «спрятанное окно не рисует кадры» зелёный (на копии без фикса F4 падал fps=2); main setBackgroundThrottling(true) при hidden (статически по HEAD:app/main.js (e2e не запускал по условию задачи);)."
+  },
+  {
+    "finding": "r1-09-02",
+    "r2verdict": "confirmed(F4)",
+    "audit": "fixed",
+    "evidence": "pet.js без requestAnimationFrame, setTimeout на шаг; idle 14.5 кадров/с, ui-check «отошёл ≤10» зелёный. CPU в Electron не мерил."
+  },
+  {
+    "finding": "r1-09-03",
+    "r2verdict": "confirmed(F4)",
+    "audit": "fixed",
+    "evidence": "Playwright: critical + away → 11.3 кадров/с, бесконечных анимаций нет (у компа 25 fps + critShake — так задумано)."
+  },
+  {
+    "finding": "r1-09-04",
+    "r2verdict": "confirmed(F4) + confirmed(F5)",
+    "audit": "fixed",
+    "evidence": "ui-check «надгробие ≤3 кадров/с» зелёный (на копии без фикса 19.8–20 fps); eggBtn 3 итерации."
+  },
+  {
+    "finding": "r1-09-05",
+    "r2verdict": "confirmed(F4) + confirmed(F5)",
+    "audit": "fixed",
+    "evidence": "Playwright: AudioContext ква running через 0.3 с, closed через 5 с; death/toast suspend — r2-F5.check.js."
+  },
+  {
+    "finding": "r1-09-06",
+    "r2verdict": "confirmed(F3) + confirmed(F4)",
+    "audit": "fixed",
+    "evidence": "статически по HEAD:app/main.js (e2e не запускал по условию задачи); cursor вдали ≤4/с, keep-alive 2 с; pet.js trackPointer не зовёт isHit вне окна (pet.js:1179)."
+  },
+  {
+    "finding": "r1-09-07",
+    "r2verdict": "confirmed(F3)",
+    "audit": "fixed",
+    "evidence": "статически по HEAD:app/main.js (e2e не запускал по условию задачи); act/drag-end/ачивки через saveSoon, mkdir один раз; периодическая запись 30 с оставлена с обоснованием."
+  },
+  {
+    "finding": "r1-09-08",
+    "r2verdict": "none",
+    "audit": "missing",
+    "evidence": "Вердикта нет ни в одном r2-файле (зона F3). Не воспроизводил: нужен 15-минутный Electron soak, e2e запрещён."
+  },
+  {
+    "finding": "r1-10-01",
+    "r2verdict": "confirmed(F3)",
+    "audit": "fixed",
+    "evidence": "статически по HEAD:app/main.js (e2e не запускал по условию задачи); web-contents-created: will-navigate preventDefault, will-attach-webview, setWindowOpenHandler deny; security.js."
+  },
+  {
+    "finding": "r1-10-02",
+    "r2verdict": "confirmed(F10)",
+    "audit": "fixed",
+    "evidence": "node_modules/electron 44.5.1, package.json закреплён точно."
+  },
+  {
+    "finding": "r1-10-03",
+    "r2verdict": "confirmed(F3)",
+    "audit": "fixed",
+    "evidence": "статически по HEAD:app/main.js (e2e не запускал по условию задачи); devEnv() читает FROG_TEST_SCRIPT/FROG_SNAPSHOT только при !app.isPackaged. Fuses не включены — отдано F10, не сделано."
+  },
+  {
+    "finding": "r1-10-04",
+    "r2verdict": "confirmed(F3)",
+    "audit": "fixed",
+    "evidence": "статически по HEAD:app/main.js (e2e не запускал по условию задачи); from(e): главный фрейм, URL app/renderer, своё окно; openWindow по own keys; snooze kind∈{water,move}; pause конечное 0..1440; LIMITS. security.js."
+  },
+  {
+    "finding": "r1-10-05",
+    "r2verdict": "confirmed(F3)",
+    "audit": "fixed",
+    "evidence": "статически по HEAD:app/main.js (e2e не запускал по условию задачи); setPermissionRequestHandler/CheckHandler → отказ."
+  },
+  {
+    "finding": "r1-10-06",
+    "r2verdict": "confirmed(F7)",
+    "audit": "still-broken",
+    "evidence": "Строгая CSP только в trophies.html. index.html, settings.html, welcome.html по-прежнему «default-src 'self'» без script-src/object-src/base-uri/form-action — handoff F7→F4/F8 не выполнен, вердиктов F4/F8 нет."
+  },
+  {
+    "finding": "r1-10-07",
+    "r2verdict": "confirmed(F9)",
+    "audit": "still-broken",
+    "evidence": "Текст исправлен (xattr -dr com.apple.quarantine, оговорка про источник). Вторая половина находки — SHA-256 dmg в релизе — не сделана: в frog-pet.yml нет shasum, handoff F9→F10 без ответа."
+  },
+  {
+    "finding": "r1-10-08",
+    "r2verdict": "confirmed(F9)",
+    "audit": "fixed",
+    "evidence": "grep: googleapis/gstatic в index.html нет."
+  },
+  {
+    "finding": "r1-10-09",
+    "r2verdict": "confirmed(F3)",
+    "audit": "fixed",
+    "evidence": "статически по HEAD:app/main.js (e2e не запускал по условию задачи); writeStore open(0600)→write→fsync→rename; второй битый файл → .broken-<время>."
+  }
+]
