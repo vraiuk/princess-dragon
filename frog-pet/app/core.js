@@ -98,7 +98,7 @@
     // перерыв засчитан, но жаба мертва: камень уже не осыпется
     backDead: [
       'Перерыв {min} засчитан. Жаль, что мне он уже не поможет 🪦',
-      'С возвращением. Я всё ещё памятник — высиди новую жабу 🥚',
+      'С возвращением. Я всё ещё {rip} — высиди новую жабу 🥚',
     ],
     morning: [
       'Доброе утро! Начнём день со стакана воды? 💧',
@@ -146,12 +146,14 @@
     ],
     paused: ['Ок, не мешаю. Пауза на {min} 🤫'],
     resumed: ['Я снова на посту 🐸'],
-    resumedDead: ['Пауза закончилась. А я всё ещё памятник 🪦'],
+    resumedDead: ['Пауза закончилась. А я всё ещё {rip} 🪦'],
   };
 
   // last — память «какая фраза была в прошлый раз» по ключу: одна реплика не выпадает дважды подряд
-  function say(kind, ctx, rnd, last) {
-    const arr = PHRASES[kind];
+  // only — необязательный фильтр реплик (например, не говорить «0 мин» в тыке)
+  function say(kind, ctx, rnd, last, only) {
+    const all = PHRASES[kind];
+    const arr = only ? all.filter(only) : all;
     let s = pick(arr, rnd);
     if (last) {
       if (arr.length > 1 && s === last[kind]) s = arr[(arr.indexOf(s) + 1) % arr.length];
@@ -205,11 +207,12 @@
     const st = Object.assign({
       waterMs: 0, sitMs: 0, pausedUntil: 0,
       nextNag: { water: 0, move: 0 }, nags: { water: 0, move: 0 },
-      lastTick: 0, clockBack: 0, away: false, awayStart: 0, idleSec: 0,
+      lastTick: 0, clockBack: 0, clockShift: 0, clockJump: 0, away: false, awayStart: 0, idleSec: 0,
       day: newDay(now), history: [],
       life: 'alive', cause: null, diedAt: 0, generation: 1, bornAt: now,
-      crit: { water: false, move: false }, graveyard: [],
+      crit: { water: false, move: false }, graveyard: [], snoozed: { water: false, move: false },
     }, saved || {});
+    st.snoozed = Object.assign({ water: false, move: false }, st.snoozed);
     st.nextNag = Object.assign({ water: 0, move: 0 }, st.nextNag);
     st.nags = Object.assign({ water: 0, move: 0 }, st.nags);
     st.day = Object.assign(newDay(now), st.day);
@@ -229,6 +232,8 @@
       coding: Math.round(st.day.codingMs / MIN),
       maxSit: Math.round(Math.max(st.day.maxSitMs, st.sitMs) / MIN),
       min: Math.round(st.sitMs / MIN),
+      // мёртвая жаба говорит о себе по причине смерти: засохшая — не «памятник»
+      rip: st.cause === 'dry' ? 'изюм' : st.cause === 'stone' ? 'памятник' : 'на кладбище',
     }, extra || {});
 
     function rollDay(t) {
@@ -259,18 +264,38 @@
       st.crit.move = false;
       st.nextNag.move = 0;
       st.nags.move = 0;
+      st.snoozed.move = false;
     }
 
     function tick(t, idleSec) {
       const events = [];
       if (!Number.isFinite(t)) return events; // мусорное время не должно навсегда испортить день и таймеры
-      // Часы ушли назад: живём по новым часам, но на один тик помним, докуда уже дошли. Если часы
-      // сразу вернулись (разовый сбой), время между «скачками» не считается сном и не воскрешает/не лечит
-      // жабу; если следующий тик идёт по новым часам — перевод настоящий, отметку забываем.
-      let from = st.lastTick;
-      if (st.clockBack) { if (t >= st.clockBack) from = Math.max(from, st.clockBack); st.clockBack = 0; }
-      if (from && t < from) st.clockBack = from;
-      const dt = from ? Math.max(0, t - from) : 0;
+      // Часы ушли назад: этот тик без прожитого времени, дальше живём по новым часам, но помним,
+      // докуда дошли (clockBack) и на сколько часы отстали (clockShift). Если часы потом вернули вперёд,
+      // настоящее время между тиками = скачок минус отставание: возврат через 80 с — это 80 с, а не
+      // «ночь», сколько бы тиков ни прошло на неверных часах. Если и за вычетом отставания прошло > 2 ч,
+      // это сон после настоящего перевода часов — считаем по новым часам целиком. Отметку забываем,
+      // когда часы вернули или новые часы сами догнали старый максимум.
+      const last = st.lastTick;
+      let dt = 0;
+      // Скачков назад может быть несколько подряд: clockJump — последний, clockShift — сумма с отметки.
+      if (last && t < last) {
+        st.clockShift = (st.clockBack ? st.clockShift || 0 : 0) + (last - t);
+        st.clockJump = last - t;
+        st.clockBack = Math.max(st.clockBack || 0, last);
+      } else if (last) {
+        dt = t - last;
+        if (st.clockBack) {
+          // часы вернули на shift вперёд: за вычетом него прошло от «почти 0» до 2 ч
+          const fits = (shift) => shift > 0 && dt - shift >= -Math.min(MIN, shift / 2) && dt - shift <= 2 * HOUR;
+          if (fits(st.clockShift)) { dt = Math.max(0, dt - st.clockShift); st.clockBack = 0; }
+          else if (fits(st.clockJump)) { dt = Math.max(0, dt - st.clockJump); st.clockShift -= st.clockJump; st.clockJump = 0; }
+          else if (dt - (st.clockShift || 0) > 2 * HOUR || t >= st.clockBack) st.clockBack = 0;
+        }
+      }
+      if (!st.clockBack) { st.clockShift = 0; st.clockJump = 0; }
+      // «ушёл от компа в …» — момент настоящего времени: сдвигается вместе с часами, перерыв не < 0
+      if (last && st.away) st.awayStart += (t - last) - dt;
       st.lastTick = t;
       st.idleSec = idleSec || 0;
       const newDayStarted = rollDay(t);
@@ -354,6 +379,8 @@
             const bad = r >= 1.5;
             const key = kind + (bad ? 'Bad' : '');
             const ev = { type: 'remind', kind, level: r, nag: st.nags[kind], text: talk(key, ctx()) };
+            // повтор после «Позже»: main показывает его тихо, без системного уведомления
+            if (st.snoozed[kind]) { ev.snoozed = true; st.snoozed[kind] = false; }
             if (kind === 'move') ev.tip = talk('exercise', ctx());
             events.push(ev);
           }
@@ -404,6 +431,7 @@
       st.nextNag = { water: 0, move: 0 };
       st.nags = { water: 0, move: 0 };
       st.crit = { water: false, move: false };
+      st.snoozed = { water: false, move: false };
       return { type: 'reborn', generation: st.generation, text: talk('reborn', ctx({ gen: st.generation })) };
     }
 
@@ -415,6 +443,7 @@
         st.nextNag.water = 0;
         st.nags.water = 0;
         st.crit.water = false;
+        st.snoozed.water = false;
       }
       st.day.drinks++;
       st.totals.drinks++;
@@ -432,6 +461,7 @@
 
     function snooze(kind, t, minutes) {
       st.nextNag[kind] = (t || Date.now()) + (minutes || S.nagEvery) * MIN;
+      if (kind in st.snoozed) st.snoozed[kind] = true;
     }
 
     function pause(t, minutes) {
@@ -440,8 +470,11 @@
                      : { type: 'resumed', text: talk(dead() ? 'resumedDead' : 'resumed', ctx()) };
     }
 
+    // «Самый долгий заход: 0 мин» и «⌨️ 0 мин» утром звучат как баг — такие реплики ждут своей статистики
     function poke() {
-      return { type: 'poke', text: talk('poke', ctx()) };
+      const c = ctx();
+      const only = (s) => !(s.includes('{maxSit}') && c.maxSit < 1) && !(s.includes('{coding}') && c.coding < 1);
+      return { type: 'poke', text: say('poke', c, rnd, lastPhrase, only) };
     }
 
     function view(t) {
@@ -500,6 +533,9 @@
         }
         // хардкор включили, когда жаба уже «за гранью» — сначала предупредить, а не убить
         if (S.deathEnabled && !prev.deathEnabled) {
+          // рекорд сидения — до обрезки, как при уменьшении moveEvery
+          st.day.maxSitMs = Math.max(st.day.maxSitMs, st.sitMs);
+          st.totals.maxSitMs = Math.max(st.totals.maxSitMs, st.sitMs);
           st.waterMs = Math.min(st.waterMs, critWaterMs());
           st.sitMs = Math.min(st.sitMs, CRITICAL * DEATH_STONE * every('move'));
           st.crit = { water: false, move: false };

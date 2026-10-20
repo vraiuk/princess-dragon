@@ -683,3 +683,125 @@ test('r1-04-08: свой генератор случайных чисел — р
   };
   assert.strictEqual(runOnce(), runOnce());
 });
+
+// ---------- круг 4 (G1): находки r3-06 (перенесены из qa/findings/r3-06.test.js), r3-05-02, r1-05-05, r1-02-09 ----------
+const types = (ev) => ev.map((e) => e.type);
+function sitFor(pet, t, minutes, idle = 0) {
+  for (let i = 0; i < minutes * 3; i++) { t += 20 * 1000; pet.tick(t, idle); }
+  return t;
+}
+
+test('r3-06-01: часы назад и обратно вперёд через несколько тиков — не «ночь», не воскрешение, не лечение', () => {
+  const pet = createPet(null, {}, T0);
+  pet.tick(T0, 0);
+  let t = T0;
+  while (pet.view(t).life === 'alive') { t += 20 * 1000; pet.tick(t, 0); }
+  // часы ошибочно перевели на 7 ч назад; три тика по 20 с идут по неверным часам
+  let c = t - 7 * HOUR;
+  for (let i = 0; i < 3; i++) { c += 20 * 1000; pet.tick(c, 0); }
+  // ошибку заметили и вернули часы: реально прошло 80 секунд
+  const ev = pet.tick(t + 80 * 1000, 0);
+  assert.deepStrictEqual(types(ev), [], 'за 80 реальных секунд жаба не должна воскреснуть и получить «утро»');
+  assert.strictEqual(pet.view(t + 80 * 1000).life, 'dead');
+
+  // живая жаба при смерти: 10 мин на неверных часах, потом часы вернули — стакан не наполнился
+  const p2 = createPet(null, {}, T0);
+  p2.tick(T0, 0);
+  const L = life(p2, T0).work(110);
+  const wr = p2.view(L.t).waterRatio;
+  let c2 = L.t - 7 * HOUR;
+  for (let i = 0; i < 30; i++) { c2 += 20 * 1000; p2.tick(c2, 1); }
+  assert.deepStrictEqual(types(p2.tick(L.t + 10 * MIN + 20 * 1000, 1)).filter((x) => x === 'morning'), []);
+  assert.ok(p2.view(L.t).waterRatio > wr, 'стакан не наполнился сам');
+
+  // два скачка назад подряд (перевод насовсем, потом разовый сбой), затем возврат к часам до сбоя
+  const p3 = createPet(null, {}, T0);
+  p3.tick(T0, 0);
+  let t3 = untilDead(p3, T0);
+  t3 -= 3 * HOUR;
+  for (let i = 0; i < 3; i++) { t3 += 20 * 1000; p3.tick(t3, 1); }
+  p3.tick(t3 - 8 * HOUR, 1);
+  assert.deepStrictEqual(types(p3.tick(t3 + 20 * 1000, 1)), []);
+  assert.strictEqual(p3.view(t3).life, 'dead');
+});
+
+test('r3-06-02: включение хардкора не уменьшает рекорд сидения (день и всё время)', () => {
+  const pet = createPet(null, { deathEnabled: false }, T0);
+  pet.tick(T0, 0);
+  const t = sitFor(pet, T0, 180);
+  assert.strictEqual(pet.view(t).totals.maxSitMs, 180 * MIN);
+  pet.setSettings({ deathEnabled: true });
+  assert.strictEqual(pet.view(t).totals.maxSitMs, 180 * MIN, 'рекорд «за всё время» усох');
+  assert.strictEqual(pet.view(t).day.maxSit, 180, 'рекорд дня усох');
+});
+
+test('r3-06-03: настоящий перевод часов назад + 6.5 ч реального сна = утро', () => {
+  const pet = createPet(null, {}, T0);
+  pet.tick(T0, 0);
+  const t = sitFor(pet, T0, 1);
+  const c = t - HOUR + 20 * 1000;           // часы перевели на час назад насовсем
+  pet.tick(c, 0);
+  const ev = pet.tick(c + 6.5 * HOUR, 0);   // крышку закрыли на 6.5 реальных часов
+  assert.ok(types(ev).includes('morning'), `после 6.5 ч сна ждали morning, получили ${JSON.stringify(types(ev))}`);
+  // и мёртвую жабу такое утро воскрешает
+  const p2 = createPet(null, {}, T0);
+  p2.tick(T0, 0);
+  const d = untilDead(p2, T0);
+  p2.tick(d - HOUR, 1);
+  assert.ok(types(p2.tick(d - HOUR + 7 * HOUR, 1)).includes('reborn'));
+});
+
+test('r3-06-04: возврат после перевода часов назад во время отсутствия — перерыв не отрицательный', () => {
+  const pet = createPet(null, {}, T0);
+  pet.tick(T0, 0);
+  const t = sitFor(pet, T0, 10, 600);       // человек не трогает мышь с T0 − 9 мин 40 с
+  let c = t - 3 * HOUR;
+  pet.tick(c += 20 * 1000, 700);
+  const back = pet.tick(c += 20 * 1000, 0).find((e) => e.type === 'back');
+  assert.ok(back, 'ждали back');
+  assert.strictEqual(back.min, 20, `реально отсутствовал ~20 мин; back.min=${back.min}, текст «${back.text}»`);
+});
+
+test('r3-05-02: мёртвая жаба говорит о себе по причине смерти — засохшая не «памятник»', () => {
+  for (const [opts, cause, word, not] of [[{ moveEvery: 999 }, 'dry', 'изюм', 'памятник'], [{ waterEvery: 999 }, 'stone', 'памятник', 'изюм']]) {
+    const pet = createPet(null, opts, T0, () => 0.99); // вторая фраза backDead
+    pet.tick(T0, 0);
+    const t = untilDead(pet, T0);
+    assert.strictEqual(pet.view(t).cause, cause);
+    const L = life(pet, t).idle(6);
+    const back = L.of('back')[0];
+    assert.ok(back && back.text.includes(word) && !back.text.includes(not), back && back.text);
+    pet.pause(L.t, 10);
+    const res = pet.pause(L.t, 0).text;
+    assert.ok(res.includes(word) && !res.includes(not), res);
+  }
+});
+
+test('r1-05-05: тык не говорит «заход: 0 мин» и «⌨️ 0 мин», пока статистики нет', () => {
+  const pet = createPet(null, {}, T0);
+  pet.tick(T0, 0);
+  for (let i = 0; i < 200; i++) assert.ok(!/\b0 мин/.test(pet.poke().text));
+  const L = life(pet, T0).work(30);
+  const seen = new Set();
+  for (let i = 0; i < 300; i++) seen.add(pet.poke().text);
+  assert.ok([...seen].some((s) => s.includes('заход') && s.includes('30 мин')), 'с рекордом фраза возвращается');
+  assert.strictEqual(pet.view(L.t).day.maxSit, 30);
+});
+
+test('r1-02-09: повтор после «Позже» помечен snoozed (main покажет его тихо), следующие — как обычно', () => {
+  const pet = createPet(null, { waterEvery: 10, moveEvery: 999, nagEvery: 10 }, T0);
+  pet.tick(T0, 0);
+  let { t } = run(pet, T0, 10);
+  pet.snooze('water', t);
+  let r = run(pet, t, 10);
+  const rem = r.events.filter((e) => e.type === 'remind');
+  assert.strictEqual(rem.length, 1, 'повтор через nagEvery');
+  assert.strictEqual(rem[0].snoozed, true);
+  r = run(pet, r.t, 10);
+  assert.ok(r.events.filter((e) => e.type === 'remind').every((e) => !e.snoozed));
+  // попил после «Позже» — следующее напоминание уже не «отложенное»
+  pet.snooze('water', r.t);
+  pet.drink(r.t);
+  r = run(pet, r.t, 11);
+  assert.ok(r.events.filter((e) => e.type === 'remind').every((e) => !e.snoozed));
+});
