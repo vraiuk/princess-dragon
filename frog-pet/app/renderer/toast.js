@@ -1,11 +1,16 @@
 // Тост «Ачивка получена!» внутри окна жабы: очередь, конфетти, звук WebAudio.
-// API: FrogToast.show({ icon, title, desc, kind, rarity }), FrogToast.setSound(bool), FrogToast.clear()
+// API: FrogToast.show({ icon, title, desc, kind, rarity }), FrogToast.setSound(bool), FrogToast.clear(),
+//      FrogToast.duration(a) — сколько висит тост, FrogToast.until(ms) — все тосты уйти к моменту ms (performance.now).
 (function (root) {
   'use strict';
 
-  const DUR = 3500;          // сколько висит один тост, мс
-  const DUR_BUSY = 2400;     // если в очереди есть ещё
+  // сколько висит тост: секунда на взгляд + ~25 символов/с на чтение, в пределах 3–6 с (r3-02-01)
+  const DUR_MIN = 3000, DUR_MAX = 6000;
+  const duration = (a) => Math.round(Math.min(DUR_MAX, Math.max(DUR_MIN, 1000 + 40 * (String(a.title || '').length + String(a.desc || '').length))));
+  const BUSY_CUT = 800, DUR_BUSY = 2400;   // если в очереди есть ещё — бодрее, но не короче 2.4 с
   const OUT = 320;           // анимация ухода, мс
+  const GAP = OUT + 120;     // от dismiss до следующего тоста
+  const FAST = 1600;         // меньше этого тост перед надгробием не показываем
   const RIBBON = { good: 'Ачивка получена!', bad: 'Позорная ачивка', secret: 'Секретная ачивка!' };
   const RAR = { common: 'обычная', rare: 'редкая', epic: 'эпическая', legendary: 'легендарная' };   // как в трофеях
   const BURST = { common: 26, rare: 40, epic: 60, legendary: 95 };
@@ -13,6 +18,7 @@
   let sound = true;
   const queue = [];
   let busy = false, timer = 0, el = null, fx = null, fxCtx = null, parts = [], raf = 0;
+  let deadline = 0, shownAt = 0, shownDur = 0;   // deadline: смерть — к подъёму надгробия тостов нет (r1-02-07)
 
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -35,7 +41,6 @@
     const kind = RIBBON[a.kind] ? a.kind : 'good';
     const rarity = RAR[a.rarity] ? a.rarity : 'common';
     el.className = `k-${kind} r-${rarity}`;
-    el.style.setProperty('--dur', DUR + 'ms');
     const ribbon = kind === 'bad' ? '💀 ' + RIBBON.bad : kind === 'secret' ? '🔮 ' + RIBBON.secret : '🏆 ' + RIBBON.good;
     el.innerHTML =
       '<div class="card">' +
@@ -55,7 +60,17 @@
     if (!a || typeof document === 'undefined') return;
     queue.push(a);
     if (!busy) next();
+    else squeeze();
   }
+
+  const clock = () => (root.performance ? performance.now() : Date.now());
+  // До надгробия осталось left мс: сколько тостов (с текущим) успеет и по сколько висеть.
+  // Последний должен начать уходить к deadline; кто не влез — пропускаем (он есть в Трофеях).
+  function plan(left, n) {
+    const k = Math.max(1, Math.min(n, Math.floor((left + GAP) / (FAST + GAP))));
+    return { k, dur: Math.max(600, (left - GAP * (k - 1)) / k) };
+  }
+  const urgent = () => deadline && clock() < deadline;
 
   function next() {
     const a = queue.shift();
@@ -63,14 +78,48 @@
     busy = true;
     mount();
     const { kind, rarity } = render(a);
-    const dur = queue.length ? DUR_BUSY : DUR;   // очередь — показываем бодрее, чтобы не отставать от событий
-    el.style.setProperty('--dur', dur + 'ms');
+    // очередь — показываем бодрее, чтобы не отставать от событий
+    let dur = queue.length ? Math.max(DUR_BUSY, duration(a) - BUSY_CUT) : duration(a);
+    if (urgent()) {
+      const p = plan(deadline - clock(), queue.length + 1);
+      queue.splice(p.k - 1);
+      dur = Math.min(dur, p.dur);
+    }
+    el.style.setProperty('--dur', Math.round(dur) + 'ms');
     void el.offsetWidth;            // перезапуск анимаций
     el.classList.add('show');
     burst(kind, rarity);
     play(kind, rarity);
     clearTimeout(timer);
+    shownAt = clock(); shownDur = dur;
     timer = setTimeout(dismiss, dur);
+  }
+
+  // тост уже висит, а надгробие близко или очередь выросла — сократить его срок
+  function squeeze() {
+    if (!urgent() || !el || !el.classList.contains('show')) return;
+    const now = clock();
+    const p = plan(deadline - now, queue.length + 1);
+    queue.splice(p.k - 1);
+    const end = Math.min(shownAt + shownDur, now + p.dur);
+    if (end >= shownAt + shownDur) return;
+    const shownDurOld = shownDur;
+    shownDur = end - shownAt;
+    clearTimeout(timer);
+    timer = setTimeout(dismiss, Math.max(0, end - now));
+    const bar = el.querySelector('.timer');   // полоска времени доезжает до нуля к новому сроку
+    if (bar) {
+      const f = Math.max(0, 1 - (now - shownAt) / Math.max(1, shownDurOld));
+      bar.style.animation = 'none'; bar.style.transform = `scaleX(${f.toFixed(3)})`;
+      void bar.offsetWidth;
+      bar.style.transition = `transform ${Math.round(Math.max(1, end - now))}ms linear`; bar.style.transform = 'scaleX(0)';
+    }
+  }
+
+  // все тосты должны начать уходить к моменту ms (performance.now); 0 — снять ограничение
+  function until(ms) {
+    deadline = ms > 0 ? ms : 0;
+    if (busy) squeeze();
   }
 
   function dismiss() {
@@ -87,6 +136,7 @@
     if (el) el.className = '';
     parts = [];
     busy = false;
+    deadline = 0;
   }
 
   // ---------- конфетти ----------
@@ -252,6 +302,8 @@
     show,
     setSound(on) { sound = !!on; },
     clear,
+    duration,
+    until,
     get busy() { return busy; },
   };
 })(typeof window !== 'undefined' ? window : globalThis);

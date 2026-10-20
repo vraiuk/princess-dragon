@@ -21,7 +21,7 @@
 
 #toast .card {
   position: relative; display: flex; align-items: center; gap: 9px;
-  padding: 16px 10px 9px 8px; border-radius: 14px; overflow: hidden;
+  padding: 16px 10px 7px 8px; border-radius: 14px; overflow: hidden;
   color: var(--ink);
   background: linear-gradient(135deg, #fffbe6 0%, #fff3c4 45%, #e9f8de 100%);
   box-shadow: 0 6px 18px rgba(0, 0, 0, .32), 0 0 0 2px var(--edge), inset 0 0 0 2px rgba(255, 255, 255, .7);
@@ -34,12 +34,13 @@
   position: absolute; left: 0; right: 0; top: 0; height: 15px;
   display: flex; align-items: center; justify-content: center; gap: 5px; z-index: 2; padding: 0 6px;
   font-size: 9.5px; font-weight: 800; line-height: 1; letter-spacing: .07em; text-transform: uppercase; white-space: nowrap;
-  color: #fff; text-shadow: 0 1px 0 rgba(0, 0, 0, .35);
+  /* тёмные буквы на светлой ленте: белые на жёлтом давали 1.6:1 (r3-08-02), тёмные — ≥ 5.5:1 */
+  color: #2b1d00; text-shadow: 0 1px 0 rgba(255, 255, 255, .3);
   background: linear-gradient(90deg, var(--b), var(--a), var(--b));
 }
 #toast .ribbon .rar {
   flex: none; padding: 1px 5px; border-radius: 6px; font-size: 8px; letter-spacing: .04em;
-  background: rgba(0, 0, 0, .25);
+  color: #fff; text-shadow: none; background: var(--edge);
 }
 
 /* медаль с иконкой */
@@ -69,9 +70,10 @@
   /* длинные названия («Гидратированный разработчик») переносим, а не режем многоточием */
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere;
 }
+/* описание — шутка ачивки, его не режем: все описания achievements.js помещаются в 3 строки (r3-02-01) */
 #toast .desc {
-  margin-top: 2px; font-size: 11.5px; color: rgba(31, 42, 34, .78);
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  margin-top: 1px; font-size: 11.5px; line-height: 1.15; color: rgba(31, 42, 34, .86);
+  overflow-wrap: anywhere;
 }
 
 /* блик, пробегающий по карточке */
@@ -115,7 +117,7 @@
   animation: shame .45s .45s ease-in-out both;
 }
 #toast.k-bad .desc { color: rgba(255, 230, 240, .8); }
-#toast.k-bad .ribbon { background: repeating-linear-gradient(-45deg, #2a0f2e 0 6px, #b8325e 6px 12px); }
+#toast.k-bad .ribbon { color: #fff; text-shadow: 0 1px 0 rgba(0, 0, 0, .35); background: repeating-linear-gradient(-45deg, #2a0f2e 0 6px, #b8325e 6px 12px); }
 /* на полосках чип редкости должен читаться плашкой; описание не заходит на череп */
 #toast.k-bad .ribbon .rar { background: #2a0f2e; box-shadow: 0 0 0 1px rgba(255, 255, 255, .25); }
 #toast.k-bad .body { padding-right: 26px; }
@@ -158,7 +160,7 @@
   animation: rainbow 3s linear infinite, glow 1.6s ease-in-out infinite;
 }
 #toast.k-secret .ribbon {
-  background: linear-gradient(90deg, #ff6b6b, #ffb84d, #e8d23a, #4fc864, #3aaef0, #8a6bff, #ff5fcf, #ff6b6b);
+  background: linear-gradient(90deg, #ff6b6b, #ffb84d, #e8d23a, #4fc864, #3aaef0, #a58cff, #ff6bd6, #ff6b6b);
   background-size: 200% 100%; animation: rainbow 2s linear infinite;
 }
 #toast.k-secret .medal {

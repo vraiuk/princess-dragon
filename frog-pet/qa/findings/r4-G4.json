@@ -1,0 +1,38 @@
+[
+ {
+  "finding": "r3-02-01",
+  "verdict": "confirmed",
+  "why": "На HEAD -webkit-line-clamp:2 у #toast .desc резал 11 из 40 описаний (first_stretch, balanced, phoenix, jade, monument, combo, vobla, gargoyle, snooze10, tech_debt, workaholic); с новыми текстами G10 — 15 (плюс alive3, alive30, iron_butt, speedrun). Длительность была одна на всех — 3.5 с. До: /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/g4/before/toast-jade.png, toast-balanced.png",
+  "fix": "toast.css: clamp у .desc снят, line-height 1.15, нижний padding карточки 9→7: все 40 описаний из DEFS целиком в 3 строки, самый высокий тост (iron_butt) кончается выше макушки (≤120px). toast.js: FrogToast.duration(a) = 1 с + 40 мс/символ (заголовок+описание), от 3 до 6 с; в очереди на 0.8 с короче, но не меньше 2.4 с. Тосты съёмки (Изюм/Железножопая/Нефритовая) 3.0–3.9 с, укладываются в TOAST_SEC=4 из test/showcase.test.js. После: /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/g4/after/toast-jade.png, toast-balanced.png, after-sheet.png",
+  "test": "qa/findings/r4-G4.check.js"
+ },
+ {
+  "finding": "r3-04 (Нефритовая жаба обрезана)",
+  "verdict": "confirmed",
+  "why": "Тот же clamp: «…Зато в Китае...» без «ценится».",
+  "fix": "См. r3-02-01: «Жаба окаменела насмерть. Зато в Китае ценится.» видно целиком.",
+  "test": "qa/findings/r4-G4.check.js"
+ },
+ {
+  "finding": "r3-08-02",
+  "verdict": "confirmed",
+  "why": "Замер пикселей фона под буквами ленты (без эмодзи): белый на good 1.58:1, на secret 1.53:1. Позорная лента 5.7:1, это в порядке.",
+  "fix": "toast.css: на good/secret у ленты тёмные буквы #2b1d00 со светлой тенью. Чип редкости — белый на var(--edge). У k-bad остаётся белый на полосках. Фиолетовая точка радуги на secret #8a6bff → #a58cff. Худший пиксель за 5 кадров анимации радуги ≥4.5:1 у всех 12 сочетаний kind/rarity. После: /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/g4/after/ribbon-good.png, ribbon-secret.png",
+  "test": "qa/findings/r4-G4.check.js"
+ },
+ {
+  "finding": "r1-02-07",
+  "verdict": "confirmed",
+  "why": "HEAD: смерть + 3 тоста — надгробие 6.54 с, «🥚 Новая жаба» 10.94 с; dry + 4 тоста — 6.32/14.02 с; reduce + 3 — 2.54/10.96 с. Облачко ждало под очередью тостов.",
+  "fix": "toast.js: FrogToast.until(ms). К этому моменту все тосты начинают уходить: в оставшееся время влезает k тостов по ≥1.6 с, остальные пропускаются (они есть в Трофеях). Текущий тост укорачивается, полоска времени доезжает к новому сроку. death.js: die() ставит срок на момент, когда надгробие поднимется целиком (T_*.tomb + TOMB_RISE, при reduce — T_CALM); reborn/reset срок снимают. Только с правками G4 (pet.js с HEAD) кнопка появляется ≤1 с после надгробия во всех 4 сценариях. С bubble-first от G3 тоже. Тосты после надгробия (тык мёртвой жабы) висят обычное время. Цена: при reduce из 3 тостов смерти показан 1, без reduce — 3 из 3 и 3 из 4.",
+  "handoff": "pet.js (G3): не требуется. bubble-first и правки G4 дополняют друг друга: к подъёму надгробия тосты смерти уже ушли и не висят над ноутбуком.",
+  "test": "qa/findings/r4-G4.check.js"
+ },
+ {
+  "finding": "r3-05-03",
+  "verdict": "confirmed",
+  "why": "Строка «Говорила «ещё одну таску — и встану»» лежала в trophies.js EPI_ANY (зона G6), а не в death.js/toast.js.",
+  "fix": "G4 ничего не правил. В death.js на надгробии и так выбито по причине: «засохла в изюм»/«окаменела». pet.js showRip берёт EPITAPH[cause]. В trophies.js G6 уже исправил это (коммит b9ef316 «cause-aware epitaphs»): строки нет в app/renderer. Проверка: для засохших жаб поколений 1–60 epitaph() ни разу не даёт «встану».",
+  "test": null
+ }
+]

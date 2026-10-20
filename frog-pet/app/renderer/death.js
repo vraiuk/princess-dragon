@@ -673,6 +673,8 @@
 
   // ---------- API ----------
   function sweep() { parts = []; pieces = []; heap = []; }
+  // тосты ачивок смерти уходят к подъёму надгробия, иначе облачко «🥚 Новая жаба» ждёт под ними (r1-02-07)
+  function toastsBy(sec) { const T = window.FrogToast; if (T && T.until) T.until(sec ? sec * 1000 : 0); }
 
   const FrogDeath = {
     // opts: { W, H, OY, FLOOR, back, front, getDpr, onTomb(info), onHatched(info) }
@@ -693,6 +695,7 @@
       mode = 'dying';
       st = { kind: cause === 'dry' ? 'dry' : 'stone', t0: now(), info, cracks: makeCracks(), flags: {}, calm: reduced() };
       if (st.kind === 'dry') sfx.shrivel();
+      toastsBy(st.t0 + (st.calm ? T_CALM.tomb : st.kind === 'dry' ? T_DRY.tomb : T_STONE.tomb) + TOMB_RISE);
     },
     // сразу надгробие, без анимации
     setDead(cause, info = {}) {
@@ -707,11 +710,12 @@
       const calm = reduced();
       // пыль и камушки прошлой смерти не летают вокруг яйца (r1-04-12)
       sweep();
+      toastsBy(0);
       if (tomb) { tomb.sink = t; tomb.told = true; if (!calm) puff(130, LID + OY - 4, 12, '#c9cdc4'); }
       mode = 'hatching';
       st = { kind: 'egg', t0: t, info, flags: {}, calm };
     },
-    reset() { sweep(); mode = 'none'; st = null; tomb = null; },
+    reset() { sweep(); toastsBy(0); mode = 'none'; st = null; tomb = null; },
     stats() { return { parts: parts.length, pieces: pieces.length, heap: heap.length, tomb: !!tomb, tombUp: tomb && !tomb.sink ? seg(now(), tomb.t0, tomb.t0 + TOMB_RISE) : 0 }; },
     // для проверок: где сейчас частицы (координаты окна) и их непрозрачность
     parts() { return parts.map((p) => ({ kind: p.kind, x: p.x, y: p.y, a: (p.a == null ? 1 : p.a) * Math.min(1, (1 - p.life / p.max) * 2.5) })); },
