@@ -15,6 +15,11 @@ on:
 permissions:
   contents: write
 
+# новый пуш отменяет устаревшую сборку той же ветки (ручные релизные запуски — отдельная группа)
+concurrency:
+  group: frog-pet-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
 jobs:
   qa:
     name: 'QA: тесты, UI, e2e в Electron'
@@ -57,6 +62,7 @@ jobs:
   build:
     needs: qa
     runs-on: macos-latest
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: frog-pet
@@ -85,6 +91,7 @@ jobs:
           npx --no -- electron-fuses read --app dist/mac-universal/Zhabka.app
           node build/check-fuses.js dist/mac-universal/Zhabka.app --slices=2
       - name: 'Смоук: приложение стартует, RunAsNode и --inspect не работают'
+        timeout-minutes: 5
         run: |
           BIN=dist/mac-universal/Zhabka.app/Contents/MacOS/Zhabka
           smoke() {
@@ -96,7 +103,11 @@ jobs:
             if grep -q 'PWNED-42' smoke.log; then echo "::error::$2: ELECTRON_RUN_AS_NODE исполнил код"; exit 1; fi
             if ! kill -0 $PID 2>/dev/null; then echo "::error::$2: Жабка упала при старте (asar integrity?)"; cat smoke.log; exit 1; fi
             if curl -s --max-time 3 http://127.0.0.1:9339/json/version; then echo "::error::$2: --inspect открыл отладчик"; exit 1; fi
-            kill $PID; wait $PID 2>/dev/null || true
+            # мягко, потом жёстко: при первом запуске висит диалог «Переместить в Программы?»
+            kill $PID 2>/dev/null || true
+            for i in $(seq 1 10); do kill -0 $PID 2>/dev/null || break; sleep 1; done
+            kill -9 $PID 2>/dev/null || true
+            pkill -9 -f 'Zhabka.app/Contents' 2>/dev/null || true
             echo "$2: ok"
           }
           smoke "" "$(uname -m)"
