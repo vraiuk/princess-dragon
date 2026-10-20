@@ -39,6 +39,13 @@
       "en",
       "ru"
     ],
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true
+    },
     "mac": {
       "category": "public.app-category.productivity",
       "minimumSystemVersion": "12.0",

@@ -1,0 +1,33 @@
+[
+  {
+    "finding": "r1-10-03",
+    "verdict": "confirmed",
+    "why": "Остаток по fuses подтверждён: в package.json не было ни electronFuses, ни afterPack, поэтому ELECTRON_RUN_AS_NODE и --inspect в упакованной сборке работали (r3-10). В electron-builder 26.15.3 есть встроенная опция build.electronFuses (app-builder-lib/out/platformPackager.js:258-299), и она использует @electron/fuses 1.8.0, который приходит транзитивно. Ставить пакет и писать afterPack не нужно. Порядок для universal (macPackager.js doUniversalPack): x64 и arm64 собираются с sign:false и disableFuses:true, затем makeUniversalApp, afterPack, doAddElectronFuses и только потом doSignAfterPack. Ad-hoc identity '-' подписывает именно на этом шаге (MacTargetHelper.js:37), так что подпись ставится после fuses и resetAdHocDarwinSignature не нужен. flipFuses меняет оба sentinel в fat-бинаре. Для asar integrity @electron/universal 2.0.3 пересчитывает ElectronAsarIntegrity для слитого app.asar (dist/cjs/index.js:229-243). После этого asar никто не меняет, поэтому EnableEmbeddedAsarIntegrityValidation и OnlyLoadAppFromAsar включены. Приложение читает файлы только через __dirname, child_process не использует, так что asar ему не мешает.",
+    "fix": "package.json build.electronFuses: runAsNode, enableNodeOptionsEnvironmentVariable и enableNodeCliInspectArguments выключены, enableEmbeddedAsarIntegrityValidation и onlyLoadAppFromAsar включены. Добавлен build/check-fuses.js: проверяет каждый fuse wire в бинаре, а для universal ещё и что слайсов 2. В CI после сборки идут: codesign --verify --deep --strict, codesign -dv и lipo -archs, затем electron-fuses read и check-fuses.js --slices=2. Последний шаг — смоук: Zhabka запускается с ELECTRON_RUN_AS_NODE=1 -e и --inspect=9339 и через 20 с должна быть жива, без вывода из -e и с закрытым портом. Если на раннере есть Rosetta, тот же смоук прогоняется под arch -x86_64. Локально проверено на Linux-сборке electron-builder --linux dir (electronDist=node_modules/electron/dist): electron-fuses read показывает нужные значения, ELECTRON_RUN_AS_NODE не исполняет -e, приложение стартует из app.asar, порт --inspect закрыт, NODE_OPTIONS игнорируется. Контроль: на dist Electron без fuses -e печатает PWNED, а check-fuses.js падает с 5 ошибками.",
+    "test": "build/check-fuses.js (шаги CI «Проверка fuses» и «Смоук»)",
+    "unknown": "Asar integrity и запуск ad-hoc-подписанной universal-сборки проверяются только на macOS-раннере, шаг «Смоук» в CI. На Linux валидация integrity ничего не делает. Если смоук упадёт с «упала при старте», выключить enableEmbeddedAsarIntegrityValidation."
+  },
+  {
+    "finding": "r1-10-07",
+    "verdict": "confirmed",
+    "why": "В frog-pet.yml не было ни shasum, ни SHA256SUMS: сверить скачанный dmg было не с чем.",
+    "fix": "Шаг «SHA-256 для релиза» запускает shasum -a 256 *.dmg *.zip и пишет dist/SHA256SUMS.txt. Файл уходит в артефакт и в релиз. Тело релиза теперь собирается в dist/release-body.md (body_path): та же инструкция, блок «сверь контрольную сумму» с командой shasum -a 256 ~/Downloads/Zhabka-*-universal.dmg и сами суммы в блоке кода. Генерацию тела проверил локально на фейковых dmg и zip.",
+    "test": null,
+    "handoff": "index.html (G10): одна строка на лендинге, как сверить сумму с SHA256SUMS.txt в релизе"
+  },
+  {
+    "finding": "r3-10-03",
+    "verdict": "confirmed",
+    "why": "Electron закреплён точно. Обновление по правилу ≥ 2 недель: сейчас 2026-10-20 00:08 UTC. 44.6.0 вышел 2026-10-06 22:39 UTC, ему 13 дней и 1,5 часа. 44.7.0–44.9.0 ещё моложе. Самый новый подходящий релиз — 44.5.1 (2026-09-30), он и стоит.",
+    "fix": "Версию не меняю: точное закрепление оставлено намеренно, потому что каретка обошла бы правило 2 недель. 44.6.0 станет допустимым 2026-10-20 после 22:39 UTC, тогда: npm i -D -E electron@44.6.0 и npm run qa.",
+    "test": null,
+    "handoff": ".github/dependabot.yml (вне зон): npm в /frog-pet, weekly, cooldown default-days: 14, чтобы правило 2 недель выполнялось автоматически"
+  },
+  {
+    "finding": "release-body-vs-README",
+    "verdict": "confirmed",
+    "why": "Тело релиза расходилось с README.md:81-92 в п. 1, где не было фразы про самоперемещение в «Программы», и в п. 4, где не было окна «Добро пожаловать» и «включён по умолчанию». Шаги для macOS 15 и 14, xattr -dr com.apple.quarantine и «Всё равно открыть» совпадали.",
+    "fix": "Пункты 1–4 и строка «повреждено» теперь дословно как в текущем README. Добавлен блок о проверке SHA-256 перед xattr.",
+    "test": null
+  }
+]
