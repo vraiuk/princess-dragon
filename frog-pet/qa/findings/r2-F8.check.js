@@ -111,6 +111,64 @@ async function main() {
     }
   }
 
+  // ===== круг 4 (G7) =====
+  // кольцо фокуса: самый внешний цвет box-shadow/outline против фона родителя
+  const RING = () => {
+    const el = document.activeElement, cs = getComputedStyle(el);
+    const bg = __c.bgOf(el.parentElement);
+    const cols = (cs.boxShadow.match(/rgba?\([^)]+\)/g) || []).map(__c.parse);
+    const outline = cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) >= 2 ? __c.parse(cs.outlineColor) : null;
+    return { id: el.id, best: Math.max(0, ...cols.map((c) => __c.ratio(__c.over(c, bg), bg)), outline ? __c.ratio(__c.over(outline, bg), bg) : 0) };
+  };
+  for (const scheme of ['light', 'dark']) {
+    // r3-08-01 / r1-08-05: первый Tab в приветствии — «Пропустить» (.btn.ghost) с видимым кольцом
+    {
+      const s = await open('welcome.html', { scheme });
+      await s.p.keyboard.press('Tab'); await s.p.waitForTimeout(300);
+      if (SHOTS) await s.p.screenshot({ path: path.join(SHOTS, `welcome-focus-skip-${scheme}.png`) });
+      const r = await s.p.evaluate(RING);
+      expect(r.id === 'bSkip' && r.best >= 3, `welcome ${scheme}: кольцо фокуса на «Пропустить» (.btn.ghost) ≥3:1`, `${r.id} ${r.best.toFixed(2)}`);
+      await s.close();
+    }
+    // r1-08-04: бейджи режима в настройках ≥4.5:1 (оба режима)
+    for (const death of [true, false]) {
+      const init = `window.frogApp = { getData: () => Promise.resolve({ settings: { deathEnabled: ${death} }, view: {}, state: {}, achievements: [], graveyard: [], version: 'dev' }), onUpdate() {}, setSetting() {}, action() {}, open() {}, finishOnboarding() {}, close() {} };`;
+      const s = await open('settings.html', { scheme, init });
+      const r = await s.p.evaluate(() => { const b = document.querySelector('#modeLine .badge'); return b ? { t: b.textContent, c: __c.text(b) } : null; });
+      expect(r && r.c >= 4.5, `settings ${scheme}: контраст бейджа «${death ? 'Хардкор' : 'Добрый'}» ≥4.5`, r ? `${r.t} ${r.c.toFixed(2)}` : 'нет бейджа');
+      expect(s.errors.length === 0, `settings ${scheme} death=${death}: без ошибок (в т.ч. CSP)`, s.errors.join(' | '));
+      await s.close();
+    }
+    // r3-08-04: zoom 150% — без горизонтальной прокрутки, версия в окне
+    {
+      const s = await open('settings.html', { zoom: 1.5, scheme });
+      if (SHOTS) await s.p.screenshot({ path: path.join(SHOTS, `settings-${scheme}-z150.png`) });
+      const r = await s.p.evaluate(() => ({ ov: document.documentElement.scrollWidth - document.documentElement.clientWidth, ver: document.getElementById('ver').getBoundingClientRect().right - document.documentElement.clientWidth, foot: [...document.querySelectorAll('.footer > *')].every((e) => e.getBoundingClientRect().right <= document.documentElement.clientWidth + 0.5) }));
+      expect(r.ov <= 0 && r.ver <= 0.5 && r.foot, `settings ${scheme} z150: без горизонтального скролла, подвал в окне`, JSON.stringify(r));
+      await s.close();
+    }
+  }
+  // r1-10-06: строгая CSP, как в trophies.html, и она реально действует
+  for (const page of ['settings.html', 'welcome.html']) {
+    const html = fs.readFileSync(path.join(ROOT, 'renderer', page), 'utf8');
+    const m = html.match(/http-equiv="Content-Security-Policy" content="([^"]+)"/);
+    const dir = {};
+    (m ? m[1] : '').split(';').map((x) => x.trim().split(/\s+/)).forEach(([k, ...v]) => { if (k) dir[k] = v.join(' '); });
+    const need = { 'default-src': "'none'", 'script-src': "'self'", 'object-src': "'none'", 'base-uri': "'none'", 'form-action': "'none'" };
+    const bad = Object.entries(need).filter(([k, v]) => dir[k] !== v).map(([k]) => `${k}=${dir[k]}`);
+    expect(bad.length === 0, `${page}: строгая CSP`, bad.join(', ') || 'нет meta');
+    const s = await open(page);
+    const r = await s.p.evaluate(async () => {
+      let f = 'READ'; try { await fetch('ui.css'); } catch { f = 'blocked'; }
+      const fr = document.createElement('iframe'); let blocked = false;
+      document.addEventListener('securitypolicyviolation', () => { blocked = true; });
+      fr.src = 'ui.css'; document.body.appendChild(fr); await new Promise((ok) => setTimeout(ok, 300)); fr.remove();
+      return { f, frame: blocked ? 'blocked' : 'LOADED' };
+    });
+    expect(r.f === 'blocked' && r.frame === 'blocked', `${page}: CSP режет fetch и iframe к локальным файлам`, JSON.stringify(r));
+    await s.close();
+  }
+
   // --- клавиатура в приветствии ---
   {
     const s = await open('welcome.html');
