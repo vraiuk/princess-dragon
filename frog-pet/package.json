@@ -1,0 +1,83 @@
+{
+  "name": "frog-pet",
+  "productName": "Zhabka",
+  "version": "2.1.0",
+  "description": "Жабка — питомец-программист для macOS: сохнет без воды и каменеет без разминки",
+  "main": "app/main.js",
+  "author": "vraiuk",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js",
+    "dist": "electron-builder --mac --universal",
+    "dist:arm": "electron-builder --mac --arm64",
+    "dist:intel": "electron-builder --mac --x64",
+    "qa:ui": "node qa/ui-check.js",
+    "qa:e2e": "node qa/e2e/run.js",
+    "qa": "npm test && npm run qa:ui && npm run qa:e2e"
+  },
+  "devDependencies": {
+    "electron": "44.5.1",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.vraiuk.zhabka",
+    "productName": "Zhabka",
+    "copyright": "🐸",
+    "files": [
+      "app/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "artifactName": "Zhabka-${version}-${arch}.${ext}",
+    "compression": "maximum",
+    "electronLanguages": [
+      "en",
+      "ru"
+    ],
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "minimumSystemVersion": "12.0",
+      "icon": "build/icon.png",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "extendInfo": {
+        "LSUIElement": true,
+        "CFBundleDisplayName": "Жабка",
+        "NSHumanReadableCopyright": "Жабка — питомец-программист"
+      }
+    },
+    "dmg": {
+      "title": "Zhabka",
+      "format": "ULFO",
+      "contents": [
+        {
+          "x": 140,
+          "y": 180
+        },
+        {
+          "x": 400,
+          "y": 180,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    }
+  }
+}

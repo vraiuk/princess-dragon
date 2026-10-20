@@ -1,0 +1,226 @@
+[
+ {
+  "id": "r1-04-01",
+  "status": "closed",
+  "area": "showcase",
+  "evidence": "Надгробие и облачко «🥚 Новая жаба» в кадре перед каждым revive: short 24.9→28.45 с (3.6 с) и 61.6→66.2 с (4.6 с), water 24.8→28.45 (3.7 с), stone 25.55→30.0 (4.5 с), tour 57.0→60.7 и 90.7→95.2. /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/short-a/f024-f029.png, /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/short-a/f062-f066.png, /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/stone/f025-f030.png; timeline.json в каждой папке (поле tomb=up)"
+ },
+ {
+  "id": "r1-04-02",
+  "status": "closed",
+  "area": "showcase",
+  "evidence": "Код: filmCtl.caption в app/main.js:561 шлёт событие caption, app/renderer/pet.js:289-298 и 318-321 рисует титр #caption. В Electron не запускал, проверено чтением кода"
+ },
+ {
+  "id": "r1-04-03",
+  "status": "closed",
+  "area": "showcase",
+  "evidence": "docs/shorts.md и showcase.js теперь совпадают: short 80 с, хук «Моя жаба умрёт, если я не пью воду и не встаю 💀» с 0.6 с от открытия, «Жабка #2…» 34.3 с, CTA «Встань. Попей. Спаси жабу» 73.5 с и «Жабка для macOS. Ссылка в профиле» 75.8–79.7 с. Все таймкоды таблицы шортса 1 попадают в ±0.6 с (death 18.5/55.1, revive 28.45/66.2, greeting 34.2/72.2). Варианты обрезки до 45 с честно описаны. Остаток — длина 80 с, см. r3-04-02. /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/short-a/timeline.json"
+ },
+ {
+  "id": "r1-04-04",
+  "status": "closed",
+  "area": "showcase",
+  "evidence": "Напоминание о воде 4.8/5.3→7.6/8.1 с (≥2.5 с), о разминке 42.8/43.4→46.0/46.4 с (≈3 с), кнопки «Попил/Позже» и «Размялся/Позже» видны. /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/short-a/f006-f008.png, /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/short-a/f044-f046.png"
+ },
+ {
+  "id": "r1-04-05",
+  "status": "closed",
+  "area": "showcase",
+  "evidence": "Пока жаба в яйце, ни одной реплики: short 28.45→34.2 (приветствие #2) и 66.2→72.15 (#3), water 28.45→34.15, stone 30.0→36.1, tour 60.7→67.2 и 95.2→101.1. Приветствие висит ≥3 с, потом сценарий. /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/short-a/f030-f038.png, /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/water/f030-f037.png"
+ },
+ {
+  "id": "r1-04-06",
+  "status": "closed",
+  "area": "showcase",
+  "evidence": "Во всех четырёх сценариях только сюжетные тосты: short — Изюм, Железножопая, Нефритовая; water — Изюм; stone — Железножопая, Нефритовая; tour — те же три. Облачко critical не прячется под тост. /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/water/f015-f021.png, /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/tour/timeline.json"
+ },
+ {
+  "id": "r1-04-07",
+  "status": "closed",
+  "area": "showcase",
+  "evidence": "water: титр «Она напоминала каждые 45 минут. Я не слушал.» 23.3–28.3 с, CTA «Жабка для macOS. Попей воды 💧» 35.4–38.9 с, глоток 37.45 с; stone: «Встань раз в 50 минут. Жаба сама заметит.» 27.4–32.1 с, «Жабка для macOS 🐸» 36.8–39.3 с, разминка 38.9 с. Сценарий кончается на живой жабе. /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/water/f036-f041.png, /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/stone/f036-f040.png"
+ },
+ {
+  "id": "r1-04-08",
+  "status": "closed",
+  "area": "showcase",
+  "evidence": "Два чистых прогона short (short-c, short-d, по одному на машине): 31 смена текста, тексты и порядок совпадают (перестановка только у титра и реплики на 0.2/0.6 с, в пределах опроса 100 мс), расхождение времени ≤0.32 с. Кадры f000–f083 различаются <3% пикселей, кроме переходов с частицами. short-a/short-b/short-desk тоже дали те же 31 фразу. /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/short-c/timeline.json, /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/short-d/timeline.json, /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/cmp.py"
+ },
+ {
+  "id": "r1-04-09",
+  "status": "closed",
+  "area": "showcase",
+  "evidence": "Нет кадров с титром, облачком и тостом одновременно; в tour на 16–18 с только титр и облачко, на 26–30 с титр «Отошёл от компа на 6 минут» сходится с облачком «Перерыв 6 мин». Дубль титра про Нефритовую/Железножопую убран. /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/tour/f026-f030.png"
+ },
+ {
+  "id": "r1-04-10",
+  "status": "open",
+  "area": "showcase",
+  "evidence": "Частично: системная плашка «Нажми 🥚 Новая жаба» на съёмке больше не появляется. Но на 1280×800 по-прежнему карточка демо 380×450 слева со строкой «Наведи на неё и нажми «🥚 Новая жаба»» (противоречит сценарию), жаба мелкая в правом нижнем углу, титр сверху по центру — в обрезку 9:16 вокруг жабы он не попадает. /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/short-desk/f027.png. Файл app/renderer/demo.js:261 (dStats на съёмке), стили .demo-card"
+ },
+ {
+  "id": "r1-04-11",
+  "status": "closed",
+  "area": "showcase",
+  "evidence": "f000 уже 11:00 в HUD и меню-баре, без скачка; титр-хук и реплика с 0.6 с после открытия страницы (doc: старт через 0.4 с). /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/short-a/f000-f001.png"
+ },
+ {
+  "id": "r1-04-12",
+  "status": "closed",
+  "area": "death",
+  "evidence": "После revive пыли нет: яйцо на чистом фоне, short f030-f031 и f067-f069, stone f031-f033 (death.js reborn → sweep()). /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/short-a/coll_05.png"
+ },
+ {
+  "id": "r1-04-13",
+  "status": "closed",
+  "area": "showcase",
+  "evidence": "HUD «без воды / сидит» сверху (top 36 px, шрифт 15 px Menlo), в безопасной зоне. /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/short-a/f017.png"
+ },
+ {
+  "id": "r1-04-14",
+  "status": "closed",
+  "area": "showcase",
+  "evidence": "title без «(~N с)», main.js:707 добавляет длительность только если её нет в title. В Electron не открывал"
+ },
+ {
+  "id": "r1-04-15",
+  "status": "closed",
+  "area": "showcase",
+  "evidence": "Сольный прогон stone 540×960 dpr2: минимум 47 fps (16–17 с, critical и трещины), худший кадр 50 мс, остальное 60 fps. /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/fps3.js"
+ },
+ {
+  "id": "r3-04-01",
+  "status": "open",
+  "severity": "medium",
+  "area": "showcase",
+  "title": "Тост «Нефритовая жаба» обрезан на 2 строках: панчлайн «ценится» теряется",
+  "repro": "?film=short&ratio=9:16 (58–62 с) или ?film=stone&ratio=9:16 (22–26 с)",
+  "expected": "Описание ачивки целиком: «Жаба окаменела насмерть. Зато в Китае ценится.» — шутка в последнем слове",
+  "actual": "В кадре «Жаба окаменела насмерть. Зато в Китае...»: .desc ограничен -webkit-line-clamp: 2 при ширине тоста в 9:16. Это кульминация окаменения в short и stone и кадр для шортса 4",
+  "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/short-a/f060-f063.png, /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/stone/f022-f025.png",
+  "file": "app/renderer/toast.css:72-75; app/achievements.js:78"
+ },
+ {
+  "id": "r3-04-02",
+  "status": "open",
+  "severity": "low",
+  "area": "showcase",
+  "title": "short длится 80 с при правиле шортсов 20–45 с",
+  "repro": "docs/shorts.md: общие правила и шортс 1",
+  "expected": "Сценарий для TikTok/Reels укладывается в 45 с со своим CTA",
+  "actual": "short 80 с: годится только для YouTube Shorts; для TikTok/Reels предложено брать 0–37 с без CTA сценария или склейку. water (40 с) и stone (42 с) укладываются и могут заменить его там — в доке этого не сказано",
+  "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/short-a/timeline.json",
+  "file": "app/showcase.js:73-104; docs/shorts.md шортс 1"
+ },
+ {
+  "id": "r3-04-03",
+  "status": "open",
+  "severity": "low",
+  "area": "showcase",
+  "title": "Титр с числом расходится с HUD в том же кадре",
+  "repro": "?film=short&ratio=9:16 на 16–18 с и 51–54 с; ?film=water&ratio=9:16 на 16–18 с",
+  "expected": "Титр «2 часа без воды» / «2 часа без перерыва» / «2 ч 15 мин без воды» не спорит со счётчиком над ним",
+  "actual": "short f017: титр «2 часа без воды», HUD «без воды 1 ч 53 мин»; short f052: «2 часа без перерыва», HUD «сидит 1 ч 36 мин»; water f017: «2 ч 15 мин без воды», HUD «2 ч 3 мин». Титр приходит на critical, до смерти, а счётчик стоит рядом крупно",
+  "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/short-a/f017.png, /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/short-a/f052.png, /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/water/f017.png",
+  "file": "app/showcase.js:84,96,121 (cap 15.7/51.2)"
+ },
+ {
+  "id": "r3-04-04",
+  "status": "open",
+  "severity": "low",
+  "area": "showcase",
+  "title": "stone: титр «FATAL: frog hardened» на живой жабе и повтор в облачке RIP",
+  "repro": "?film=stone&ratio=9:16, 16–19 с и 25–30 с",
+  "expected": "Титр смерти после смерти; панчлайн не повторяется дважды",
+  "actual": "Титр «FATAL: frog hardened 🗿» висит 16.1–18.8 с, пока жаба ещё просит «Встань, пожалуйста!»; через 9 с облачко RIP говорит «FATAL: frog #1 hardened…» ещё раз. CTA stone «Жабка для macOS 🐸» без действия и ссылки, слабее, чем в water и short",
+  "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/stone/f016-f017.png, /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/stone/f026-f030.png, /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/stone/f037.png",
+  "file": "app/showcase.js:139,143"
+ },
+ {
+  "id": "r3-04-05",
+  "status": "open",
+  "severity": "low",
+  "area": "showcase",
+  "title": "Пустые паузы без текста: 4–5 с после смерти и ~5 с вылупления; в tour 23 с без титров",
+  "repro": "?film=short&ratio=9:16 19–24 с, 29–34 с; ?film=tour&ratio=9:16 84–107 с",
+  "expected": "Каждые ~3 с в кадре что-то читается или происходит событие (удержание в шортсе)",
+  "actual": "short: после тоста «Изюм» 22.0–24.9 с пустой кадр с пылью, вылупление 28.5–34.2 без титра (титр «Жабка #2» только на 34.3). tour: после «А если сидеть 2 часа…» (70–72 с) следующий титр только на 107.9 с. В доке на смерти задуманы озвучка и тишина, так что это скорее монтажная заметка",
+  "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/short-a/f022-f023.png, /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/short-a/f030-f034.png, /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/tour/coll_07.png",
+  "file": "app/showcase.js:86-88,151-155"
+ },
+ {
+  "id": "r3-04-scores",
+  "area": "showcase",
+  "note": "Оценки 1–10 по кадрам 9:16 (540×960 dpr2). r1 — восстановлены по кадрам и находкам r1-04 (в r1 числа не записывали). п.6 — рубрика qa/README.md «Готово к ролику».",
+  "r1": {
+   "short": {
+    "hook": 5,
+    "readability": 5,
+    "pace": 4,
+    "climax": 4,
+    "cta": 3,
+    "rubric6": "нет"
+   },
+   "water": {
+    "hook": 6,
+    "readability": 5,
+    "pace": 4,
+    "climax": 4,
+    "cta": 1,
+    "rubric6": "нет"
+   },
+   "stone": {
+    "hook": 6,
+    "readability": 5,
+    "pace": 4,
+    "climax": 4,
+    "cta": 1,
+    "rubric6": "нет"
+   },
+   "tour": {
+    "hook": 6,
+    "readability": 4,
+    "pace": 5,
+    "climax": 4,
+    "cta": 5,
+    "rubric6": "нет"
+   }
+  },
+  "r3": {
+   "short": {
+    "hook": 8,
+    "readability": 8,
+    "pace": 7,
+    "climax": 9,
+    "cta": 8,
+    "rubric6": "да"
+   },
+   "water": {
+    "hook": 8,
+    "readability": 9,
+    "pace": 8,
+    "climax": 9,
+    "cta": 8,
+    "rubric6": "да"
+   },
+   "stone": {
+    "hook": 8,
+    "readability": 8,
+    "pace": 8,
+    "climax": 9,
+    "cta": 6,
+    "rubric6": "да"
+   },
+   "tour": {
+    "hook": 7,
+    "readability": 8,
+    "pace": 6,
+    "climax": 8,
+    "cta": 7,
+    "rubric6": "да (для 9:16; сценарий задуман горизонтальным)"
+   }
+  },
+  "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/<сценарий>/coll_*.png, /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-04/<сценарий>/timeline.json; прогон short-d-stalled испорчен нагрузкой машины (goto 30 с), не учитывался"
+ }
+]

@@ -1,0 +1,90 @@
+[
+  {
+    "id": "r1-09-01", "severity": "high", "area": "pet",
+    "title": "Спрятанное окно жабы продолжает рисовать 20 fps (rAF 60/с): 13.7% CPU впустую",
+    "repro": "HOME=$(mktemp -d) FROG_TEST_SCRIPT=/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-09/states.js timeout 900 xvfb-run -a ./node_modules/.bin/electron . --no-sandbox  (фаза 'hidden': api.win.close() → setHidden(true), замер 60 с)",
+    "expected": "После «Спрятать жабу» отрисовка стоит, CPU ≈ фон main (~1%)",
+    "actual": "hidden: total 13.72% (Tab 10.72, GPU 2.28, Browser 0.70), fps 20, rAF 60/с — столько же, сколько видимое окно в coding (12.17%). sendCursor останавливается (OK), но 'view' по-прежнему 1/с. Причина: backgroundThrottling:false + цикл frame() без проверки видимости. Эксперимент exp.js: при остановленном rAF total = 1.1% (Tab 0.13, GPU 0.02).",
+    "fix": "В setHidden() слать в рендер send('visible', !hidden) (или слушать document.visibilitychange) и не планировать requestAnimationFrame, пока окно скрыто; возобновлять при показе. Альтернатива: win.webContents.setBackgroundThrottling(hidden).",
+    "effect": "hidden: 13.7% → ~1.1% CPU (замерено с остановленным rAF), т.е. −92%",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-09/states60.log (label 'hidden (coding)'), /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-09/exp.log ('frames stopped')",
+    "file": "app/main.js:174, app/main.js:210, app/renderer/pet.js:921"
+  },
+  {
+    "id": "r1-09-02", "severity": "high", "area": "pet",
+    "title": "В покое 8.5–12% CPU — в 3–4 раза выше бюджета 3%: rAF будит рендер 60 раз/с и каждый кадр жаба перерисовывается целиком",
+    "repro": "states.js, фазы coding/idle/away по 60 с (idle подменён через powerMonitor.getSystemIdleTime)",
+    "expected": "Фоновая утилита в покое < 3% CPU одного ядра суммарно (main+renderer+GPU)",
+    "actual": "coding 12.17% (fps 20), idle 9.53% (fps 15), away/сон 8.45% (fps 12). rAF всегда 60/с: frame() вызывается 60 раз и пропускает кадры через acc<step, т.е. рендер-процесс просыпается 60 раз/с даже при цели 12 fps. Каждый «настоящий» кадр заново рисует back/front-холсты (drawBack/drawFront), градиенты и частицы, даже если ничего не изменилось (renderer task 40–70 мс/с). Эксперимент: замена rAF на setTimeout(80 мс) в away даёт 9.0% → 7.6% (−16%), остановка кадров — 1.1%.",
+    "fix": "1) Планировать кадр через setTimeout(step) вместо rAF-с-пропуском (или rAF только когда step=1/30). 2) В away рисовать 2–4 fps (z-частицы медленные), в idle ~8 fps; кешировать тело жабы в back/front и перерисовывать только при изменении sm/eye/blink (dirty-флаг). 3) Помнить, что под xvfb рендер программный — на Mac с GPU-композитингом абсолютные числа ниже, но 60 пробуждений/с и полный перерисов остаются (мешают App Nap).",
+    "effect": "Оценка: away 8.5% → ~2–3%, idle 9.5% → ~3–4%; уменьшение пробуждений рендера с 60/с до 2–8/с",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-09/states60.log, /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-09/exp.log",
+    "file": "app/renderer/pet.js:921-937, app/renderer/pet.js:999-1040"
+  },
+  {
+    "id": "r1-09-03", "severity": "medium", "area": "pet",
+    "title": "Состояние critical: 24.4% CPU (30 fps + радиальный градиент каждый кадр + бесконечная CSS-анимация critShake), а critical держится всё время, пока человек отошёл",
+    "repro": "states.js фаза critical: waterEvery=0.05 до critical, затем пауза (critical держится), замер 60 с",
+    "expected": "Тревожное состояние допустимо дороже, но не в 8 раз выше бюджета и не на часы",
+    "actual": "critical: total 24.37% (Tab 19.95), fps 30, style recalc 60/с (critShake infinite на #bubble.crit). В core.tick, пока человек away, вода ограничена уровнем «при смерти» (st.waterMs = min(w, max(.., critWaterMs()))), т.е. жаба может часами (обед, ночь с непогасшим экраном) висеть в critical; critLevel()>0 отключает «calm» → 30 fps, хотя activity=away.",
+    "fix": "Если view.activity==='away' — не крутить critical-анимацию на 30 fps (2–4 fps, свечение статичным кешем); critShake ограничить несколькими итерациями или только при появлении облачка; градиент свечения создать один раз и рисовать с globalAlpha.",
+    "effect": "critical+away: 24% → ~3%; critical с человеком за компом: 24% → ~10%",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-09/states60.log ('critical (paused)')",
+    "file": "app/renderer/pet.js:925-930, app/renderer/pet.js:1014-1021, app/renderer/style.css:47, app/core.js:275"
+  },
+  {
+    "id": "r1-09-04", "severity": "medium", "area": "death",
+    "title": "Надгробие (dead) рисуется 20 fps и с бесконечной CSS-анимацией eggBtn: 15% CPU, может длиться до утра",
+    "repro": "states.js фаза dead: смерть от жажды, +15 с на анимацию, замер 60 с; document.getAnimations()",
+    "expected": "Статичное надгробие ≈ фон (комментарий в коде: «в покое — реже»)",
+    "actual": "dead: total 15.05% (Tab 10.85, GPU 2.90), fps 20 (step 1/20 — чаще, чем живая жаба в idle 1/15), style recalc 60/с из-за animation: eggBtn 2.4s infinite у кнопки «🥚 Новая жаба» (iterations=Infinity). Мёртвая жаба остаётся мёртвой, пока не нажали «Высидеть» или не наступило утро — часы.",
+    "fix": "Для dead без частиц: 1–2 fps (или кадр только при poke/flowers/hover); eggBtn — animation-iteration-count: 3 или только при :hover / раз в N секунд через JS.",
+    "effect": "dead: 15% → ~1.5% CPU",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-09/states60.log ('dead (tomb)', 'dead anims')",
+    "file": "app/renderer/pet.js:929, app/renderer/style.css:65"
+  },
+  {
+    "id": "r1-09-05", "severity": "medium", "area": "pet",
+    "title": "Три AudioContext в окне жабы (pet, death, toast) никогда не suspend/close — Audio Service живёт вечно",
+    "repro": "states.js: после первого звука в getAppMetrics появляется Utility 'audio.mojom.AudioService' и не исчезает до выхода",
+    "expected": "Аудиопоток открыт только на время звука",
+    "actual": "После первого ква/тоста Audio Service остаётся навсегда: 0.4–0.8% CPU в состояниях без звука под xvfb (null-синк). На macOS работающий AudioContext держит поток CoreAudio IO и мешает App Nap/энергосбережению — для «весь день на экране» это постоянная утечка батареи. Контекстов три: pet.js croak(), death.js audio(), toast.js audio().",
+    "fix": "Один общий AudioContext на окно; после проигрывания (onended последнего узла + ~2 с) вызывать ctx.suspend(), перед звуком — resume(); или close() и создавать заново.",
+    "effect": "−0.5–1% CPU постоянно и снятие блокировки App Nap на Mac; −1 процесс",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-09/states60.log ('procs', поле cpu['Audio Service'])",
+    "file": "app/renderer/pet.js:95, app/renderer/death.js:40, app/renderer/toast.js:183"
+  },
+  {
+    "id": "r1-09-06", "severity": "low", "area": "main",
+    "title": "Опрос курсора 20 Гц всегда; при движении мыши в любом месте экрана — 20 IPC/с и elementFromPoint в рендере",
+    "repro": "states.js фаза mouse: screen.getCursorScreenPoint подменён на движущуюся точку далеко от окна",
+    "expected": "Курсор далеко от жабы — почти никаких сообщений",
+    "actual": "Мышь стоит: 120 send('cursor')/мин (2/с, keep-alive раз в 500 мс) + 20 таймерных пробуждений main/с. Мышь двигается (вдали от окна): 1190 send('cursor')/мин, CPU 12.17% → 14.55% (+2.4%), в рендере trackPointer→isHit→elementFromPoint/getBoundingClientRect на каждое сообщение.",
+    "fix": "В sendCursor не слать, если курсор дальше ~150 px от bounds окна (кроме одного «ушёл» сообщения); вне окрестности опрашивать 4 Гц вместо 20; в рендере сначала дешёвая проверка прямоугольника, потом isHit.",
+    "effect": "+2.4% при движении мыши → ~0.2%; пробуждения main 20/с → 4/с",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-09/states60.log ('coding+mouse moving')",
+    "file": "app/main.js:404-413, app/main.js:787, app/renderer/pet.js:1135-1138"
+  },
+  {
+    "id": "r1-09-07", "severity": "low", "area": "main",
+    "title": "frog.json пишется каждые 30 с безусловно и на каждый тык/перетаскивание/ачивку (+ mkdirSync на каждую запись)",
+    "repro": "states.js / soak.js: подмена fs.writeFileSync, счёт записей frog.json.tmp",
+    "expected": "Запись только при изменении значимого состояния, с дебаунсом",
+    "actual": "В покое 2 записи/мин по 1.2–1.5 КБ (до ~6 КБ при полном кладбище 50) ≈ 2880 записей и 3.5–17 МБ/день; при активности (тыки, ачивки, смерти) в ускоренном прогоне 30 записей/мин (444 записи / 1.69 МБ за 15 мин). Для SSD это ничтожно, но каждая запись — синхронный I/O в main-потоке и пробуждение диска.",
+    "fix": "Флаг dirty + дебаунс 3–5 с для act()/checkAchievements; периодическое сохранение раз в 2–5 мин; mkdirSync один раз при старте.",
+    "effect": "Записей ~2880/день → ~300–700/день",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-09/states60.log (io.diskWrites), /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-09/soak.log",
+    "file": "app/main.js:106-126, app/main.js:349, app/main.js:382, app/main.js:789"
+  },
+  {
+    "id": "r1-09-08", "severity": "low", "area": "main",
+    "title": "Куча main растёт линейно при ускоренных смертях: 3.7 → 8.0 МБ за 15 мин (после GC); рендер стабилен",
+    "repro": "HOME=$(mktemp -d) FROG_TEST_SCRIPT=/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-09/soak.js timeout 1500 xvfb-run -a ./node_modules/.bin/electron . --no-sandbox --js-flags=--expose-gc  (51 смерть/возрождение, 241 тост, тыки, трофеи открыть/закрыть, hide/show)",
+    "expected": "Плато после заполнения кладбища (50)",
+    "actual": "main heapUsed после gc: 3.74 → 7.99 МБ (~0.28 МБ/мин, без плато даже после graveyard=50); RSS main 208 → 214 МБ. Рендер жабы стабилен: heap 1.2→2.17 МБ (плато с 2-й минуты), DOM nodes 92, JS-слушатели 13, ipcMain слушателей 10, слушателей webContents 17, таймеров 4 — утечек слушателей/таймеров нет. Источник роста в main не локализован (кандидаты: объекты Notification без close, рост achievements/totals); при реальном темпе (1 смерть в часы) влияние мало.",
+    "fix": "Снять два heap snapshot main (v8.writeHeapSnapshot) до/после 50 смертей и сравнить; если Notification — хранить ссылку и вызывать close() у предыдущего уведомления.",
+    "effect": "Подтвердить/опровергнуть утечку; ожидаемо плато ~5 МБ",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r1-09/soak.log",
+    "file": "app/main.js:284-290"
+  }
+]

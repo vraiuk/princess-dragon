@@ -1,0 +1,171 @@
+name: Жабка — сборка для macOS
+
+on:
+  push:
+    branches: ['**']
+    tags: ['frog-v*']
+    paths: ['frog-pet/**', '.github/workflows/frog-pet.yml']
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Тег релиза, например frog-v2.0.0 (пусто — только сборка)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+# новый пуш отменяет устаревшую сборку той же ветки (ручные релизные запуски — отдельная группа)
+concurrency:
+  group: frog-pet-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
+jobs:
+  qa:
+    name: 'QA: тесты, UI, e2e в Electron'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frog-pet
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frog-pet/package-lock.json
+      - run: npm ci
+      - name: Юнит-тесты и фазз (80 недель)
+        run: npm test
+        env:
+          FUZZ_RUNS: '80'
+      - name: Playwright для UI-проверок (не в devDependencies)
+        run: |
+          npm i --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: UI-проверки в браузере
+        run: npm run qa:ui
+      - name: xvfb и библиотеки для Electron
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgtk-3-0 libnss3 libgbm1 libasound2t64 libxss1
+      - name: E2E в настоящем Electron
+        run: npm run qa:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frog-qa-out
+          path: frog-pet/qa/out
+          if-no-files-found: warn
+
+  build:
+    needs: qa
+    runs-on: macos-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: frog-pet
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frog-pet/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - name: 'Сборка .dmg и .zip — Universal, Apple Silicon + Intel'
+        run: npx electron-builder --mac --universal --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Проверка подписи (ad-hoc, после fuses)
+        run: |
+          APP=dist/mac-universal/Zhabka.app
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dv "$APP" 2>&1 | grep -E 'Signature|Format|Identifier'
+          lipo -archs "$APP/Contents/MacOS/Zhabka"
+          ls -la dist
+      - name: Проверка fuses Electron (оба слайса universal)
+        run: |
+          npx --no -- electron-fuses read --app dist/mac-universal/Zhabka.app
+          node build/check-fuses.js dist/mac-universal/Zhabka.app --slices=2
+      - name: 'Смоук: приложение стартует, RunAsNode и --inspect не работают'
+        timeout-minutes: 5
+        run: |
+          BIN=dist/mac-universal/Zhabka.app/Contents/MacOS/Zhabka
+          smoke() {
+            # С включённым RunAsNode Electron выполнил бы -e и вышел; с выключенным стартует жаба.
+            ELECTRON_RUN_AS_NODE=1 $1 "$BIN" --inspect=9339 \
+              -e "console.log('PWNED-'+(6*7))" > smoke.log 2>&1 &
+            PID=$!
+            sleep 20
+            if grep -q 'PWNED-42' smoke.log; then echo "::error::$2: ELECTRON_RUN_AS_NODE исполнил код"; exit 1; fi
+            if ! kill -0 $PID 2>/dev/null; then echo "::error::$2: Жабка упала при старте (asar integrity?)"; cat smoke.log; exit 1; fi
+            if curl -s --max-time 3 http://127.0.0.1:9339/json/version; then echo "::error::$2: --inspect открыл отладчик"; exit 1; fi
+            # мягко, потом жёстко: при первом запуске висит диалог «Переместить в Программы?»
+            kill $PID 2>/dev/null || true
+            for i in $(seq 1 10); do kill -0 $PID 2>/dev/null || break; sleep 1; done
+            kill -9 $PID 2>/dev/null || true
+            pkill -9 -f 'Zhabka.app/Contents' 2>/dev/null || true
+            echo "$2: ok"
+          }
+          smoke "" "$(uname -m)"
+          if arch -x86_64 /usr/bin/true 2>/dev/null; then smoke "arch -x86_64" x86_64; else echo "Rosetta нет, x64-слайс не запускаю"; fi
+      - name: SHA-256 для релиза
+        run: |
+          cd dist
+          shasum -a 256 *.dmg *.zip | tee SHA256SUMS.txt
+      - name: Текст релиза
+        run: |
+          {
+            cat <<'EOF'
+          🐸 **Жабка** — питомец-программист для macOS.
+
+          **Установка (macOS 12+, Apple Silicon и Intel):**
+          1. Скачай `Zhabka-…-universal.dmg`, открой его и перетащи **Zhabka** в папку **Applications / Программы**. Запускай только оттуда, не из окна dmg и не из «Загрузок» (иначе не сработает автозапуск). Потом извлеки диск Zhabka в Finder. Если всё же запустишь не из «Программ», Жабка один раз предложит переместиться туда сама.
+          2. Приложение не подписано сертификатом Apple, поэтому первый запуск macOS заблокирует. Проще всего снять карантин в Терминале и запустить:
+             ```
+             xattr -dr com.apple.quarantine /Applications/Zhabka.app
+             open /Applications/Zhabka.app
+             ```
+          3. Без Терминала:
+             - **macOS 15 Sequoia и новее:** дважды кликни Жабку → в окне «Zhabka не открыто» нажми **Готово** → **Системные настройки → Конфиденциальность и безопасность** → внизу «Программа Zhabka заблокирована…» → **Всё равно открыть** → введи пароль → **Открыть**. Правый клик → «Открыть» на Sequoia больше не помогает.
+             - **macOS 14 Sonoma и старше:** **правый клик по Жабке → Открыть → Открыть**.
+          4. Иконки в Dock нет, так и задумано: жаба появится в правом нижнем углу, а живёт она в 🐸 в меню-баре справа вверху (если не видно, меню-бар переполнен, освободи место). Откроется окно «Добро пожаловать». Разреши уведомления, когда macOS спросит. Если macOS сообщит «Добавлены объекты для входа» — это автозапуск Жабки, он включён по умолчанию и выключается в её настройках.
+
+          Если macOS пишет «повреждено, переместите в корзину» — выполни команду из п. 2.
+
+          **Перед снятием карантина сверь контрольную сумму.** Команда `xattr` отключает проверку Gatekeeper только для Жабки; делай это лишь для файла из этого релиза, если SHA-256 совпала. В Терминале:
+          ```
+          shasum -a 256 ~/Downloads/Zhabka-*-universal.dmg
+          ```
+          Результат должен совпасть со строкой ниже (она же в файле `SHA256SUMS.txt`). Не совпала — не открывай файл.
+
+          **SHA-256:**
+          ```
+          EOF
+            cat dist/SHA256SUMS.txt
+            echo '```'
+          } > dist/release-body.md
+          cat dist/release-body.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Zhabka-macOS
+          path: |
+            frog-pet/dist/*.dmg
+            frog-pet/dist/*.zip
+            frog-pet/dist/SHA256SUMS.txt
+          if-no-files-found: error
+      - name: Релиз
+        if: startsWith(github.ref, 'refs/tags/frog-v') || inputs.release_tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: Жабка ${{ inputs.release_tag || github.ref_name }}
+          body_path: frog-pet/dist/release-body.md
+          files: |
+            frog-pet/dist/*.dmg
+            frog-pet/dist/*.zip
+            frog-pet/dist/SHA256SUMS.txt

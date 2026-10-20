@@ -1,0 +1,65 @@
+[
+  {
+    "finding": "r1-06-10",
+    "verdict": "confirmed",
+    "why": "Старый фазз (HEAD test/fuzz.test.js) зелёный на копии core.js без `st.crit.water = false` в drink() и без `st.crit.move = false` в endSitting(): critSeen сбрасывался только на reborn.",
+    "fix": "Фазз следит за долей пути до смерти (view.doom): если действие человека (попил, размялся, ушёл, ночь) опустило её ниже зоны critical, ждём свежий critical. Смена настроек ожидание не сбрасывает. Путь к core задаётся env FUZZ_CORE — мутанты гоняются на копии, app/core.js не трогается. Оба мутанта теперь ловятся: «смерть без свежего предупреждения critical».",
+    "test": "test/fuzz.test.js"
+  },
+  {
+    "finding": "r1-06-11",
+    "verdict": "confirmed",
+    "why": "Все 6 слепых пятен подтверждены чтением и мутантами: старый фазз пропускал 5 из 5 мутантов core (drink-crit, endSitting-crit, away-by-dt, clock-glitch, skip-critical).",
+    "fix": "(1) Шаг «freeze»: один тик через 20 с–2 ч, человек за компом; шаг «pokes» — тычки раз в секунду; шаг «care» — попил и размялся. Инвариант: нет смерти в тике после паузы ≥ breakAfter. (2) Каждый 4-й сид «враждебный»: разовый тик из прошлого, NaN, часы переведены назад насовсем. Инварианты: morning/reborn только после настоящих >2 ч; state конечен, day.date валиден, history по порядку. (3) Во враждебных сидах настройки как из frog.json: waterEvery 1–200, moveEvery 1–240, breakAfter 1–30, nagEvery 1–60. Так поймана r1-06-03: при moveEvery=4 тик через 14 мин перепрыгнул зону critical. (4) Мёртвой жабе не говорят «камень осыпался»/«на посту» (back/resumed); до фикса F1 падало на 33 из 40 сидов. (5) list() согласован с выданными в check(); прогресс в [0,max]; полный прогресс = ачивка выдана; секреты замаскированы. Достижимость: за 40 недель каждая ачивка, кроме alive30/aquarium/stretch100/streak7/leet, выдаётся хоть раз. (6) process.env.TZ = FUZZ_TZ || Europe/Berlin, старты 23 марта и 19 октября 2026 — недели проходят через DST. Мутанты на копии текущего core, пойманы все 7: drink-crit, endSitting-crit, away-by-dt, clock-glitch, skip-critical, nan-guard, secret-unmasked (через FUZZ_ACH). На текущем core 40 и 80 прогонов зелёные (~17 с и ~32 с).",
+    "test": "test/fuzz.test.js"
+  },
+  {
+    "finding": "r1-10-02",
+    "verdict": "confirmed",
+    "why": "В node_modules был electron 38.8.6. Ветка 38 вне поддержки; по npm view electron текущие ветки 42–44, последний мажор 44 (44.0.0 вышел 2026-08-25). Сегодня 2026-10-19, самая новая 44.x, вышедшая не позже чем 2 недели назад, — 44.5.1 (2026-09-30).",
+    "fix": "package.json: electron закреплён точно на 44.5.1 (--save-exact: правило «не моложе 2 недель» держится и без lockfile), package-lock.json обновлён. electron-builder 26.15.3 не трогал: для проверок на Linux обновление не нужно, сборку под mac проверяет только CI. После обновления: npm test 81/81, qa:ui 98/0, qa:e2e 15/15 сценариев на v44.5.1 (--no-sandbox под xvfb). Electron 44 требует node >= 22.12 — setup-node 22 в CI подходит. Не сделано: проверка в CI, что мажор Electron поддерживается (Dependabot и т. п.), — отдельное решение.",
+    "test": "npm run qa:e2e"
+  },
+  {
+    "finding": "r1-02-02 / r1-03-05 / r1-05-06 / r1-05-17 (класс багов для ui-check: обрезанный текст)",
+    "verdict": "confirmed",
+    "why": "Новая проверка в qa/ui-check.js прогоняет через облачко 87 реплик из FrogCore.PHRASES: все 42 пары move/moveBad × exercise, воду, «оба сразу», critical, drink, stretch, back, poke, pause. Проверяет scrollHeight ≤ clientHeight+1 у .txt и .tip, что кнопки не обрезаны и облачко в пределах окна. На HEAD обрезано 35; на коде середины круга — 2 (critical_water, который F1 удлинил, и critical_move); сейчас 0.",
+    "fix": "Проверка добавлена. Фикс кода — в зоне F1/F4.",
+    "test": "qa/ui-check.js"
+  },
+  {
+    "finding": "r1-08-10 (класс багов для ui-check: reduced motion)",
+    "verdict": "confirmed",
+    "why": "emulate reducedMotion=reduce, затем document.getAnimations(): ищем running-анимации с iterations=Infinity в critical, в тостах всех редкостей и у надгробия. На HEAD нашлись critShake, pulse, bob@medal, eggBtn; сейчас нет ни одной.",
+    "fix": "Проверка добавлена",
+    "test": "qa/ui-check.js"
+  },
+  {
+    "finding": "r1-09-01 / r1-09-02 / r1-09-04 (класс багов для ui-check: кадры в покое)",
+    "verdict": "confirmed",
+    "why": "Вместо коридора fps 15–40 — пределы: idle ≤ 40, человек отошёл ≤ 10, надгробие ≤ 3, спрятанное окно (document.hidden + visibilitychange) — 0 кадров за 2 с. На HEAD: отошёл 12, спрятано 12, надгробие 20 — падает. На текущем pet.js от F4 проходит (отошёл 8, надгробие 2, спрятано 0). Связаться с F4 через SendMessage не вышло (агент недоступен), поэтому пороги взяты с запасом над его текущим frameStep.",
+    "fix": "Проверка добавлена",
+    "test": "qa/ui-check.js"
+  },
+  {
+    "finding": "r1-08-02 (класс багов для ui-check: контраст кнопок)",
+    "verdict": "confirmed",
+    "why": "Контраст текста к реальному (смешанному) фону ≥ 4.5:1: кнопки облачка (вода, движение, оба, critical, надгробие); в окнах .btn, выбранная вкладка и сегмент, светлая и тёмная тема. В середине круга кнопки облачка давали 3.47 («Попил 💧» на #2f8de4) и 2.83 («Размялся 🤸» на #3fae5a); сейчас исправлено. На нарочно сломанной копии (--green:#3fae5a в ui.css) «Дальше →» и «Поехали 🐸» дают 2.83 — проверка падает.",
+    "fix": "Проверка добавлена",
+    "test": "qa/ui-check.js"
+  },
+  {
+    "finding": "handoff F9: проверка горизонтального скролла слепа при overflow-x:hidden",
+    "verdict": "confirmed",
+    "why": "На копии лендинга с html,body{overflow-x:hidden} и элементом шириной 140vw старая проверка scrollWidth проходит. Новая offRight ловит: div.wide-bug +512px на 1280 и +156px на 390.",
+    "fix": "offRight: элементы с getBoundingClientRect().right > clientWidth+1. Пропускаем то, что внутри position:fixed или внутри контейнеров, которые сами режут или прокручивают по x (overflow-x hidden/clip/auto/scroll). Применена к лендингу (1280/390) и ко всем окнам в обеих темах. На текущем коде — 0.",
+    "test": "qa/ui-check.js"
+  },
+  {
+    "finding": "CI",
+    "verdict": "confirmed",
+    "why": "Job qa гонял фазз со значением по умолчанию — 40 недель. Артефакт qa/out уже выкладывался (frog-qa-out, if: always()).",
+    "fix": "В шаг «Юнит-тесты и фазз» job qa добавлен env FUZZ_RUNS: '80'. Загрузку артефакта оставил как есть.",
+    "test": ".github/workflows/frog-pet.yml"
+  }
+]

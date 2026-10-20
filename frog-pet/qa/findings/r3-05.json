@@ -1,0 +1,142 @@
+[
+  {
+    "finding": "r1-05-01",
+    "status": "closed",
+    "why": "say() с памятью last не даёт повтор подряд; дубль в poke удалён (8 фраз, все разные)."
+  },
+  {
+    "finding": "r1-05-02",
+    "status": "closed",
+    "why": "«1 перерыв / 2 перерыва / 21 перерыв / 111 перерывов (вместе с разминками)» — /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-05/plural.tsv"
+  },
+  {
+    "finding": "r1-05-03",
+    "status": "closed",
+    "why": "desc balanced: «6 перерывов»."
+  },
+  {
+    "finding": "r1-05-04",
+    "status": "closed",
+    "why": "main.js:628-632: «пора пить воду», минимум «через 1 мин», на паузе «на паузе ещё …»."
+  },
+  {
+    "finding": "r1-05-05",
+    "status": "open",
+    "why": "core/main/death/demo HUD — через Core.fmtDur, граничные значения верны (/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-05/say.tsv). Осталось: poke «Самый долгий заход без перерыва сегодня: 0 мин» и «⌨️ 0 мин» утром; pet.js:1130-1131 тултипы «Сидишь 110 мин»; demo.js:262,318 сырые минуты; showcase.js:55 «Перерыв {min} мин» без fmtDur; trophies.js:76-83 свой fmtDur: при ≥5 днях «6 дней 22 ч», а надгробие (core) — «6 дней»."
+  },
+  {
+    "finding": "r1-05-06",
+    "status": "closed",
+    "why": "Фразы смерти без {age}, все ≤64 символов."
+  },
+  {
+    "finding": "r1-05-07",
+    "status": "open",
+    "why": "Почти не тронуто: ачивки (Возродил, Засушил, Окаменил, Покрыл, Довёл, Отложил, Проигнорировал, Тыкнул, Перетащил, Воскресил, Сам ушёл, Вернулся), меню «Я попил воды / Я размялся» (main.js:739-740), кнопки «Попил / Размялся» (pet.js:196-210), index.html:21-22; README.md:5 переписан в круге 2 и снова мужской: «чтобы ты не засох в сухарь и не окаменел в памятник». Исправлены: core back, лендинг «пока ты читаешь», balanced, HIDDEN."
+  },
+  {
+    "finding": "r1-05-08",
+    "status": "closed",
+    "why": "core.js: «Ты слишком долго сидишь». Но в съёмке осталась старая фраза — см. r3-05-01."
+  },
+  {
+    "finding": "r1-05-09",
+    "status": "open",
+    "why": "«Железножопая жаба» на месте (achievements.js, index.html:283, README, shorts.md, showcase.js) — решение продукта не принято."
+  },
+  {
+    "finding": "r1-05-10",
+    "status": "open",
+    "why": "Эпитафии трофеев заменены, дублей облачко↔кладбище нет. Осталось: уведомление main.js:391 «404: Water Not Found» повторяет death_dry[0] и LINES['death:dry']."
+  },
+  {
+    "finding": "r1-05-11",
+    "status": "closed",
+    "why": "core, trophies и showcase («пишу код вместе с тобой») исправлены."
+  },
+  {
+    "finding": "r1-05-12",
+    "status": "closed",
+    "why": "50/5, ~80 с (README=shorts=SCRIPTS.short.duration), «попросит воды в ближайшие минуты». Новая фактическая ошибка — r3-05-04."
+  },
+  {
+    "finding": "r1-05-13",
+    "status": "closed",
+    "why": "Мок трофеев строится из FrogAchievements.DEFS, 40 карточек."
+  },
+  {
+    "finding": "r1-05-14",
+    "status": "closed",
+    "why": "Тост: обычная/редкая/эпическая/легендарная; HIDDEN.desc один на оба окна."
+  },
+  {
+    "finding": "r1-05-15",
+    "status": "closed",
+    "why": "«засохших: N · окаменевших: N»."
+  },
+  {
+    "finding": "r1-05-16",
+    "status": "open",
+    "why": "«…», «DDoS почек», «1,5 ч» исправлены; «Аптайм 99.9%» оставлен осознанно (F2) — нужно «99,9 %», если правим типографику."
+  },
+  {
+    "finding": "r1-05-17",
+    "status": "closed",
+    "why": "Реплика демо ~82 символа."
+  },
+  {
+    "id": "r3-05-01",
+    "severity": "medium",
+    "area": "showcase",
+    "title": "Съёмка показывает старую фразу «Слишком долго сидели»: фикс r1-05-08 не дошёл до LINES",
+    "repro": "node -e \"const S=require('./app/showcase.js');const e={type:'death',cause:'stone',generation:2,text:'x'};S.line(S.SCRIPTS.short,e,{});console.log(e.text)\"",
+    "expected": "'death:stone': 'FATAL: frog #{gen} hardened. Ты слишком долго сидишь 🪦' (как в core); docs/shorts.md:55 синхронно",
+    "actual": "«FATAL: frog #2 hardened. Слишком долго сидели 🪦» — именно эта фраза висит на надгробии в шортсах short и stone",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-05/say.tsv",
+    "file": "app/showcase.js:51"
+  },
+  {
+    "id": "r3-05-02",
+    "severity": "medium",
+    "area": "core",
+    "title": "Засохшая жаба говорит «Я всё ещё памятник»",
+    "repro": "node /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-05/deadback.js — смерть от жажды, потом перерыв ≥5 мин или конец паузы",
+    "expected": "Фраза мёртвой жабы не зависит от причины или учитывает её: «С возвращением. Я всё ещё на кладбище — высиди новую жабу 🥚», «Пауза закончилась. А я всё ещё RIP 🪦»",
+    "actual": "death:dry → «С возвращением. Я всё ещё памятник — высиди новую жабу 🥚», «Пауза закончилась. А я всё ещё памятник 🪦» (жаба — изюм, надгробие «засохла в изюм»)",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-05/deadback.txt",
+    "file": "app/core.js:101,149"
+  },
+  {
+    "id": "r3-05-03",
+    "severity": "low",
+    "area": "trophies",
+    "title": "Общая эпитафия «Говорила «ещё одну таску — и встану»» достаётся засохшим жабам",
+    "repro": "epitaph() берёт пул EPI[cause] + EPI_ANY; строка про «встану» лежит в EPI_ANY",
+    "expected": "Перенести её в EPI.stone (или в EPI_ANY заменить на нейтральную: «Говорила «ещё одну таску — и всё»».)",
+    "actual": "На могиле «🥵 засохла»: «Здесь лежит Жабка #N. Говорила «ещё одну таску — и встану».»",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-05/strings.tsv",
+    "file": "app/renderer/trophies.js:278"
+  },
+  {
+    "id": "r3-05-04",
+    "severity": "low",
+    "area": "landing",
+    "title": "«Около 6 стаканов за 8-часовой день» при стакане раз в 45 мин — арифметика не сходится",
+    "repro": "480 / 45 ≈ 10,7",
+    "expected": "«Около 10 стаканов за 8-часовой день — пей хотя бы 6» или «Стакан примерно раз в час»; одинаково в трёх местах",
+    "actual": "settings.html:170, README.md:60, index.html:299 — «Около 6 стаканов за 8-часовой день плюс утренний»",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-05/strings.tsv",
+    "file": "app/renderer/settings.html:170; README.md:60; index.html:299"
+  },
+  {
+    "id": "r3-05-05",
+    "severity": "low",
+    "area": "showcase",
+    "title": "Демо: «Вода через 0 мин», сырые минуты и фраза без подлежащего",
+    "repro": "Демо в браузере: перемотать до напоминания, кликнуть 🐸 в фейковом меню-баре; прочитать «Как она считает»",
+    "expected": "Как в main.js:631: «пора пить воду» / Core.fmtDur; «Движение: через 50 мин сидения жаба напомнит размяться и начнёт каменеть снизу вверх.»",
+    "actual": "demo.js:318 «Вода через 0 мин, разминка через 0.»; demo.js:262 «🧘 сидишь 110 мин»; demo.js:141 «через 50 мин сидения — напоминание и каменеет снизу вверх»",
+    "evidence": "/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/r3-05/strings.tsv",
+    "file": "app/renderer/demo.js:141,262,318"
+  }
+]

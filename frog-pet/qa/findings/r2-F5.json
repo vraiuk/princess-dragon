@@ -1,0 +1,106 @@
+[
+ {
+  "finding": "r1-03-02",
+  "verdict": "confirmed",
+  "why": "Кадры 4.0–5.0 с после reborn: 💚 на глазах, белый puff на рту, два кольца через морду, пузырьки над глазами (/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/f5/before-reborn/sheet.png).",
+  "fix": "death.js: сердечки по бокам головы (x±66..92), дым — два клуба у стола по краям, искры стартуют с эллипса 70×66 вне морды, кольцо-ударная волна убрано, пузырьки головастика кончаются за 0.7 с до вспышки и живут 0.7 с. FrogDeath.parts() — позиции частиц для проверки. После: /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/f5/after-reborn/r044.png, r046.png",
+  "test": "qa/findings/r2-F5.check.js"
+ },
+ {
+  "finding": "r1-03-04",
+  "verdict": "confirmed",
+  "why": "Чип редкости на полосатой ленте сливался с фоном и упирался в край (letter-spacing .12em), ☠ лежал под 2-й строкой описания (пересечение rect текста и черепа).",
+  "fix": "toast.css: ribbon letter-spacing .07em, padding 0 6px, z-index над лучами; .rar flex:none и тёмная плашка с обводкой на позорной ленте; у позорного тоста .body padding-right 26px — описание не заходит на череп. После: /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/f5/check/toasts.png",
+  "test": "qa/findings/r2-F5.check.js"
+ },
+ {
+  "finding": "r1-03-06",
+  "verdict": "confirmed",
+  "why": "onTomb вызывался в момент старта подъёма надгробия (0.7 с из-за ноутбука), облачко RIP висело над пустым местом.",
+  "fix": "death.js: onTomb вызывается из drawBehind, когда надгробие поднялось целиком (TOMB_RISE 0.7 с); stats().tombUp для проверки. В pet.js менять ничего не нужно, но F4 уже добавил setTimeout 800 мс в onTomb — теперь задержки складываются (облачко через 0.8 с после полного подъёма).",
+  "handoff": "app/renderer/pet.js:onTomb (F4): убрать setTimeout(…, 800) или сократить до ≤200 мс — death.js сам ждёт подъёма надгробия",
+  "test": "qa/findings/r2-F5.check.js"
+ },
+ {
+  "finding": "r1-03-08",
+  "verdict": "confirmed",
+  "why": "Осколки — скруглённые quadraticCurve-многоугольники с 38% зелёной жабы и полупрозрачной серой заливкой: овальные «листья»; кольцо бледно-зелёное (/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/f5/before-stone/sheet1.png).",
+  "fix": "death.js: угловатые многоугольники со срезанными углами, заливка непрозрачным серым (composite color), фактура жабы 30%, грани светлая/тёмная; кольцо серое. После: /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/f5/after-stone/t020.png, t025.png; в проверке доля зелёных пикселей <8%",
+  "test": "qa/findings/r2-F5.check.js"
+ },
+ {
+  "finding": "r1-03-07",
+  "verdict": "confirmed",
+  "why": "На кадре трещин (1.5 с) окаменевшая жаба серо-зелёная, низкоконтрастная (/tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/f5/after-stone/t015.png). Палитра камня — pet.js.",
+  "fix": "не моя зона",
+  "handoff": "app/renderer/pet.js:954 (F4): плотнее палитра stone>=0.9 (темнее контур, серый без зелени, дуга наушников тоже каменеет)",
+  "test": null
+ },
+ {
+  "finding": "r1-03-10",
+  "verdict": "confirmed",
+  "why": "Крупная крышка скорлупы без floor улетала ниже окна, мелкие с vx до ±150 — к краям (x≈15).",
+  "fix": "death.js: крышка вверх и тает за 0.75 с; крошки разлетаются симметрично vx 40–95, drag 0.6, пол = FLOOR (на столе).",
+  "test": "qa/findings/r2-F5.check.js"
+ },
+ {
+  "finding": "r1-04-01",
+  "verdict": "confirmed",
+  "why": "T_STONE.tomb 8.6 и T_DRY.tomb 7.4 + подъём 0.7 с — дольше, чем пауза до revive в старых сценариях.",
+  "fix": "death.js: сжал таймлайн (ветер/призрак раньше, пыль рассыпается с 3.6 с). Замер в браузере: stone — надгробие начинает подниматься 5.8 с, целиком видно 6.5 с; dry — 5.6 / 6.3 с. Облачко с кнопкой — после полного подъёма (+0.8 с из-за pet.js сейчас: 7.3 / 7.1 с).",
+  "handoff": "app/showcase.js (F6): TIMING.tomb можно уменьшить до { dry: 5.6, stone: 5.8 } (старт подъёма; тест сверяет T_*.tomb) — надгробие целиком видно через +0.7 с: dry 6.3 с, stone 6.5 с после события death. revive не раньше death + 6.3/6.5 + tombHold. Текущие revive по старым 7.4/8.6 тоже валидны — надгробие просто висит дольше.",
+  "test": "qa/findings/r2-F5.check.js"
+ },
+ {
+  "finding": "r1-04-12",
+  "verdict": "confirmed",
+  "why": "reborn() чистил pieces/heap, но не parts: revive во время смерти (4.2 с) оставлял пыль вокруг яйца.",
+  "fix": "death.js: reborn() делает sweep() перед puff осевшего надгробия.",
+  "test": "qa/findings/r2-F5.check.js"
+ },
+ {
+  "finding": "r1-04-15",
+  "verdict": "unknown",
+  "why": "Окно 260×320 dpr2, headless: rAF 57–60 fps всё время смерти stone, drawFront медиана 0.1–0.6 мс; одна заминка 26 мс в момент разлома (getImageData + канвасы осколков), разовая. Просадка до 20 fps в находке — на кадре 540×960 со скриншотами каждые 0.4 с, без GPU. На Mac не проверить.",
+  "fix": "не делаю: устойчивой просадки нет, разовый спайк дешевле оставить",
+  "test": null
+ },
+ {
+  "finding": "r1-08-10",
+  "verdict": "confirmed",
+  "why": "Конфетти рисовались при reduce (пиксели на #toast-fx), в тосте бесконечные анимации (bob, glow, rainbow) не отключались; смерть/вылупление трясли и разбрасывали частицы.",
+  "fix": "toast.js: при reduce нет конфетти; toast.css: тост проявляется fade 0.2 с, без тряски/вращения/блика/качания, трещина и череп сразу в финальном виде, полоска времени остаётся. death.js: при reduce жаба тихо угасает (0.6–1.6 с, без тряски, осколков, ветра, призрака), надгробие проявляется на месте к 2.5 с; вылупление — яйцо проявляется и тает, жаба проявляется, без салюта. Кадры: /tmp/claude-0/-home-user-princess-dragon/bd30c647-11f3-57a6-9fda-e371cd8a9cf1/scratchpad/f5/reduce-stone/sheet.png",
+  "handoff": "app/renderer/style.css, pet.js:373 (F4): critShake/eggBtn/pulse и тряска critical при reduce; welcome.js (F8)",
+  "test": "qa/findings/r2-F5.check.js"
+ },
+ {
+  "finding": "r1-09-04",
+  "verdict": "confirmed",
+  "why": "По коду в HEAD pet.js:929 — 1/20 для dead; в рабочем дереве F4 уже 1/2 (pet.js:977). Со стороны death.js у надгробия анимируются только мигание диода и качание цветов — им 2 fps хватает.",
+  "fix": "в death.js ничего не нужно",
+  "handoff": "app/renderer/style.css:eggBtn (F4): ограничить итерации",
+  "test": null
+ },
+ {
+  "finding": "r1-09-05",
+  "verdict": "confirmed",
+  "why": "death.js и toast.js держали AudioContext running навсегда после первого звука.",
+  "fix": "death.js: после последнего запланированного звука +1.5 с ctx.suspend(), resume перед новым; toast.js: suspend через 3 с после звука тоста. Проверка: все AudioContext окна не running через 4.5 с.",
+  "handoff": "app/renderer/pet.js:95 croak (F4): то же самое или общий контекст",
+  "test": "qa/findings/r2-F5.check.js"
+ },
+ {
+  "finding": "r1-05-14",
+  "verdict": "confirmed",
+  "why": "Тост: «эпик», «легенда»; трофеи: «Эпическая», «Легендарная».",
+  "fix": "toast.js RAR = обычная/редкая/эпическая/легендарная (как trophies.js:125; в ленте uppercase), влезает в ленту. Текст HIDDEN — achievements.js (F2).",
+  "test": "qa/findings/r2-F5.check.js"
+ },
+ {
+  "finding": "r1-05-05",
+  "verdict": "confirmed",
+  "why": "death.js fmtAge давал «2 дн 2 ч», отличаясь от остальных.",
+  "fix": "death.js fmtAge использует FrogCore.fmtDur (core.js загружен раньше), локальный вариант — только запасной.",
+  "test": null
+ }
+]
