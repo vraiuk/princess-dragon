@@ -1,7 +1,7 @@
 {
   "name": "frog-pet",
   "productName": "Zhabka",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Жабка — питомец-программист для macOS: сохнет без воды и каменеет без разминки",
   "main": "app/main.js",
   "author": "vraiuk",
