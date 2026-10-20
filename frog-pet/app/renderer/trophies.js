@@ -71,16 +71,12 @@
     if (b === 1) return one;
     return many;
   };
-  const fmtDate = (t) => new Date(t).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }).replace('.', '');
-  const fmtDateTime = (t) => fmtDate(t) + ', ' + new Date(t).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-  function fmtDur(min) {
-    min = Math.max(0, Math.round(num(min)));
-    if (min < 60) return min + ' мин';
-    const h = Math.floor(min / 60), m = min % 60;
-    if (h < 24) return h + ' ч' + (m ? ' ' + m + ' мин' : '');
-    const d = Math.floor(h / 24), hh = h % 24;
-    return d + ' ' + plural(d, 'день', 'дня', 'дней') + (hh ? ' ' + hh + ' ч' : '');
-  }
+  // битая дата из frog.json («bad», {}, 1e20) — «?», а не «Invalid Date»
+  const okT = (t) => (typeof t === 'number' || typeof t === 'string') && t !== '' && Number.isFinite(new Date(t).getTime());
+  const fmtDate = (t) => (okT(t) ? new Date(t).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }).replace('.', '') : '?');
+  const fmtDateTime = (t) => (okT(t) ? fmtDate(t) + ', ' + new Date(t).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '?');
+  // длительности — тем же форматтером, что надгробие и реплики жабы (../core.js)
+  const fmtDur = window.FrogCore.fmtDur;
   // большие суммы времени — в часах, без «дней»
   const fmtHours = (min) => (min >= 24 * 60 ? Math.round(min / 60) + ' ч' : fmtDur(min));
   const dk = (t) => {
@@ -141,7 +137,7 @@
         ${p ? `<div class="bar"><i style="width:${pct}%"></i></div><div class="ach-prog">${num(p.cur)} / ${num(p.max)}</div>` : ''}
         <div class="ach-foot">
           <span class="rar">${esc(RARITY[a.rarity] || 'Обычная')}</span>
-          ${a.unlocked && a.at ? `<span class="when">✓ ${esc(fmtDate(a.at))}</span>` : ''}
+          ${a.unlocked && okT(a.at) ? `<span class="when">✓ ${esc(fmtDate(a.at))}</span>` : ''}
         </div>
       </div>
     </article>`;
@@ -275,7 +271,7 @@
     'git blame укажет на тебя.',
     'Не пережила очередной мерж-конфликт.',
     'Её стектрейс был длиннее её жизни.',
-    'Говорила «ещё одну таску — и встану».',
+    'Говорила «ещё одну таску — и всё».',
   ];
   const EPI = {
     dry: [
@@ -322,7 +318,7 @@
             <div class="rip">R.I.P.</div>
             <div class="g-name">Жабка #${num(g.generation)}</div>
             <div class="g-cause">${stoneC ? '🗿 окаменела' : '🥵 засохла'}</div>
-            <div class="g-dates">${g.bornAt ? esc(fmtDate(g.bornAt)) : '?'} — ${g.diedAt ? esc(fmtDateTime(g.diedAt)) : '?'}</div>
+            <div class="g-dates">${esc(fmtDate(g.bornAt))} — ${esc(fmtDateTime(g.diedAt))}</div>
             <div class="g-age">прожила ${esc(fmtDur(g.ageMin))}</div>
             <div class="g-epi">«Здесь лежит Жабка #${num(g.generation)}. ${esc(epitaph(g))}»</div>
           </div>
