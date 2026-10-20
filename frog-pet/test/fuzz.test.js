@@ -47,6 +47,11 @@ function simulate(seed) {
   let lastDoom = { water: 0, move: 0 };
   let checkMs = 0, checks = 0;
   let deadBefore = false;
+  // частота напоминаний: когда было последнее громкое напоминание каждого вида и при каком nagEvery;
+  // free[k] — «Позже» или смена настроек: следующий повтор k законно может прийти раньше
+  const lastNag = { water: null, move: null };
+  let free = { water: false, move: false };
+  let lastClock = t;
 
   const fail = (msg) => { throw new Error(`seed=${seed} t=${new Date(t).toISOString()}: ${msg}\n  last: ${log.slice(-8).join(' | ')}`); };
 
@@ -61,7 +66,27 @@ function simulate(seed) {
     }
   }
 
-  function handle(events, gap) {
+  // Повтор напоминания (nag ≥ 2, не тихий) приходит не раньше nagEvery после прошлого громкого
+  // напоминания того же вида и — совместный ритм — после прошлого напоминания другого вида. Первое
+  // напоминание после сброса (попил, размялся, отошёл, новая жаба: nag = 1) идёт по своему таймеру.
+  function checkNag(ev, now) {
+    if (ev.quiet) return;
+    const k = ev.kind;
+    if (ev.nag > 1 && !free[k]) {
+      for (const other of ['water', 'move']) {
+        const prev = lastNag[other];
+        if (!prev || !(now > prev.at)) continue; // то же тик (вместе) или часы ушли назад
+        const every = Math.min(prev.every, settings.nagEvery) * MIN;
+        if (now - prev.at < every - 1) {
+          fail(`напоминание ${k} #${ev.nag} через ${Math.round((now - prev.at) / 1000)} с после ${other} (nagEvery ${every / MIN} мин)`);
+        }
+      }
+    }
+    free[k] = false;
+    lastNag[k] = { at: now, every: settings.nagEvery };
+  }
+
+  function handle(events, gap, now) {
     const wasDead = deadBefore; // состояние до тика/действия: само событие могло уже убить жабу
     for (const ev of events) {
       log.push(ev.type + (ev.kind ? ':' + ev.kind : '') + (ev.cause ? ':' + ev.cause : ''));
@@ -82,6 +107,7 @@ function simulate(seed) {
         const v = pet.view(t);
         if (v.life === 'dead') fail('напоминание мёртвой жабе');
         if (v.paused) fail('напоминание на паузе');
+        checkNag(ev, now === undefined ? t : now);
       }
       if (wasDead && (ev.type === 'back' || ev.type === 'resumed' || ev.type === 'critical') && /камень осыпался|на посту|⚠️/.test(ev.text || '')) {
         fail(`мёртвой жабе: ${ev.type} «${ev.text}»`);
@@ -101,7 +127,11 @@ function simulate(seed) {
   function tick(idleSec, feed) {
     const gap = real - lastReal;
     lastReal = real;
-    handle(pet.tick(feed === undefined ? t : feed, idleSec), gap);
+    const now = feed === undefined ? t : feed;
+    // часы ушли назад: интервалы между напоминаниями по часам больше ничего не значат
+    if (now < lastClock) { lastNag.water = null; lastNag.move = null; }
+    if (Number.isFinite(now)) lastClock = now;
+    handle(pet.tick(now, idleSec), gap, now);
     trackDoom(true);
   }
   const advance = (ms) => { t += ms; real += ms; };
@@ -208,7 +238,7 @@ function simulate(seed) {
       let ev = null;
       if (a === 'drink') ev = pet.drink(t);
       else if (a === 'stretch') ev = pet.stretch(t);
-      else if (a === 'snooze') { pet.snooze(pick(['water', 'move']), t, 10); ev = { type: 'snooze' }; }
+      else if (a === 'snooze') { const k = pick(['water', 'move']); pet.snooze(k, t, 10); free[k] = true; ev = { type: 'snooze' }; }
       else if (a === 'poke') ev = pet.poke();
       else if (a === 'pause') ev = pet.pause(t, pick([0, 1, 30, 60]));
       else if (a === 'revive' && pet.view(t).life === 'dead') ev = pet.revive(t);
@@ -224,8 +254,19 @@ function simulate(seed) {
         waterEvery: pick([30, 45, 60, 90]), moveEvery: pick([30, 45, 50, 60, 90]), breakAfter: pick([3, 5, 10]),
       });
       pet.setSettings(settings);
+      // интервалы сменились: доля пути и nagEvery другие, ближайший повтор законно сдвигается
+      free = { water: true, move: true };
       // смена хардкора поверх critical — сбрасываем ожидание предупреждения, core обязан выдать его заново
-      if (r() < 0.15) { settings = Object.assign({}, settings, { deathEnabled: !settings.deathEnabled }); pet.setSettings(settings); critSeen = { water: false, move: false }; }
+      if (r() < 0.15) {
+        settings = Object.assign({}, settings, { deathEnabled: !settings.deathEnabled });
+        pet.setSettings(settings);
+        critSeen = { water: false, move: false };
+        // хардкор включили, когда жаба «за гранью»: доля пути обрезается до critical — сперва предупредить
+        const v = pet.view(t);
+        if (settings.deathEnabled && v.life === 'alive') {
+          for (const k of ['water', 'move']) if (v.doom[k] > Core.CRITICAL + 1e-9) fail(`хардкор включён при doom.${k}=${v.doom[k].toFixed(3)} > critical: смерть без запаса на предупреждение`);
+        }
+      }
       trackDoom(false);
     }
     checkView();

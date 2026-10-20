@@ -6,6 +6,9 @@
 // окна трофеев/настроек/приветствия и лендинг без горизонтального скролла.
 // Классы багов круга 1: обрезанный текст облачка и совета, бесконечные анимации при reduced motion,
 // кадры без пауз в покое и в спрятанном окне, контраст кнопок, элементы за правым краем при overflow-x:hidden.
+// Классы багов круга 3 (--r3 — только они, быстро): титры съёмки и описания всех ачивок без многоточия,
+// облачко «при смерти» не под тостом, «🥚» не позже 9 с после смерти при 3 тостах, контраст ленты тоста,
+// canvas без бесконечной пульсации при reduced motion, видимый фокус на кнопках окон.
 // QA_ROOT=/путь/к/копии — проверить другую копию приложения (мутационная проверка самих проверок).
 const http = require('http');
 const fs = require('fs');
@@ -18,6 +21,7 @@ const ROOT = path.resolve(process.env.QA_ROOT || path.join(__dirname, '..'));
 const argv = process.argv.slice(2);
 const OUT = path.resolve(argv.includes('--out') ? argv[argv.indexOf('--out') + 1] : path.join(__dirname, 'out'));
 const FILM = argv.includes('--film');
+const ONLY_R3 = argv.includes('--r3');
 fs.mkdirSync(OUT, { recursive: true });
 
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.json': 'application/json', '.md': 'text/plain' };
@@ -89,6 +93,221 @@ async function main() {
   const ev = (p, e) => p.evaluate((x) => window.__frogDebug.event(x), e);
   const view = (p, v) => p.evaluate((x) => window.__frogDebug.view(x), v);
 
+  // ---------- классы багов круга 3 ----------
+  const opacity = (p, sel) => p.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return 0;
+    let o = 1;
+    for (let e = el; e; e = e.parentElement) { const cs = getComputedStyle(e); if (cs.display === 'none' || cs.visibility === 'hidden') return 0; o *= Number(cs.opacity); }
+    return o;
+  }, sel);
+
+  async function round3() {
+    // 1. Любой титр сценария съёмки целиком в окне жабы, без многоточия (r3-03-01, r1-04-02)
+    {
+      const s = await page('/app/renderer/index.html?clean=1');
+      const res = await s.p.evaluate(async () => {
+        const texts = new Set();
+        for (const sc of Object.values(window.FrogShowcase.SCRIPTS)) for (const st of sc.steps || []) if (st.cmd === 'caption' && st.text) texts.add(st.text);
+        const pet = document.querySelector('#pet').getBoundingClientRect();
+        const bad = [];
+        for (const text of texts) {
+          window.__frogDebug.event({ type: 'caption', text });
+          await new Promise((ok) => setTimeout(ok, 30));
+          const el = document.querySelector('#caption');
+          const r = el.getBoundingClientRect();
+          if (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1) bad.push(`«${text}» обрезан (${el.scrollHeight}>${el.clientHeight})`);
+          else if (r.left < pet.left - 1 || r.right > pet.right + 1 || r.top < pet.top - 1 || r.bottom > pet.bottom + 1) bad.push(`«${text}» за краем окна`);
+        }
+        return { n: texts.size, bad };
+      });
+      expect(res.n > 0 && res.bad.length === 0, `титры: все ${res.n} титров сценариев целиком в окне жабы`, `${res.bad.length} обрезано: ${res.bad.slice(0, 4).join(' | ')}`);
+      expect(s.errors.length === 0, 'титры: без ошибок консоли', s.errors.join(' | '));
+      await s.close();
+    }
+
+    // 2. Название и описание каждой ачивки помещаются в тост (r3-02-01, r3-04-01)
+    {
+      const s = await page('/app/renderer/index.html?clean=1');
+      const res = await s.p.evaluate(async () => {
+        const pet = document.querySelector('#pet').getBoundingClientRect();
+        const bad = [];
+        const defs = window.FrogAchievements.DEFS;
+        for (const d of defs) {
+          window.FrogToast.clear();
+          window.FrogToast.show({ id: d.id, title: d.title, desc: d.desc, icon: d.icon, kind: d.kind, rarity: d.rarity });
+          await new Promise((ok) => setTimeout(ok, 30));
+          for (const sel of ['.title', '.desc']) {
+            const el = document.querySelector('#toast ' + sel);
+            if (!el) { bad.push(`${d.id}: нет ${sel}`); continue; }
+            if (el.scrollHeight > el.clientHeight + 1) bad.push(`${d.id} ${sel} обрезан: «${el.textContent}»`);
+          }
+          const card = document.querySelector('#toast .card').getBoundingClientRect();
+          if (card.height > 0 && (card.left < pet.left - 1 || card.right > pet.right + 1)) bad.push(`${d.id}: тост шире окна`);
+        }
+        window.FrogToast.clear();
+        return { n: defs.length, bad };
+      });
+      expect(res.n >= 40 && res.bad.length === 0, `тост: описания всех ${res.n} ачивок не обрезаны`, `${res.bad.length}: ${res.bad.slice(0, 4).join(' | ')}`);
+      expect(s.errors.length === 0, 'тост-описания: без ошибок консоли', s.errors.join(' | '));
+      await s.close();
+    }
+
+    // 3. Облачко «при смерти» не прячется под тост: critical и позорная ачивка в одном тике (r1-02-06)
+    {
+      const s = await page('/app/renderer/index.html?clean=1');
+      await view(s.p, { dry: 0.9, glass: 0, needs: { water: true }, critical: { water: true, move: false }, doom: { water: 0.85, move: 0.1 } });
+      await ev(s.p, { type: 'critical', kind: 'water', text: 'Я при смерти. Последний шанс — стакан воды!' });
+      await ev(s.p, { type: 'achievement', id: 'vobla', title: 'Сушёная вобла', desc: 'Жаба засохла до состояния закуски.', icon: '🐟', kind: 'bad', rarity: 'rare' });
+      const bad = [];
+      for (let i = 0; i < 16; i++) {
+        await s.p.waitForTimeout(250);
+        const g = await geom(s.p);
+        const op = await opacity(s.p, '#bubble');
+        const when = `${(i + 1) * 0.25} с`;
+        if (!/\bcrit\b/.test(g.bubbleClass) || op < 0.5) bad.push(`${when}: облачко «${g.bubbleClass}» opacity ${op.toFixed(2)}`);
+        else if (overlap(g.bubble, g.toast)) bad.push(`${when}: тост поверх облачка`);
+      }
+      expect(bad.length === 0, 'при смерти + тост: облачко «при смерти» видно и не закрыто тостом', bad.slice(0, 3).join(' | '));
+      await s.close();
+    }
+
+    // 4. Кнопка «🥚» видна не позже 9 с после death, даже когда следом 3 тоста (r1-02-07)
+    {
+      const s = await page('/app/renderer/index.html?clean=1', { wait: 1500 });
+      const t0 = Date.now();
+      await ev(s.p, { type: 'death', cause: 'stone', generation: 2, ageMin: 130, text: 'Жабка окаменела.' });
+      await view(s.p, { life: 'dead', cause: 'stone', generation: 2, ageMin: 130 });
+      for (const [id, title] of [['gargoyle', 'Горгулья'], ['jade', 'Нефритовая жаба'], ['tech_debt', 'Технический долг']]) {
+        await ev(s.p, { type: 'achievement', id, title, desc: 'Позорная ачивка.', icon: '🗿', kind: 'bad', rarity: 'rare' });
+      }
+      let at = null;
+      while (Date.now() - t0 < 13000) {
+        const ok = await s.p.evaluate(() => {
+          const btn = document.querySelector('#bubble.dead button.main');
+          const b = document.querySelector('#bubble');
+          if (!btn || b.classList.contains('hidden') || b.classList.contains('under-toast')) return false;
+          let o = 1; for (let e = btn; e; e = e.parentElement) o *= Number(getComputedStyle(e).opacity);
+          const r = btn.getBoundingClientRect();
+          const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          return o > 0.9 && r.width > 0 && !!hit && (hit === btn || btn.contains(hit));
+        });
+        if (ok) { at = Date.now() - t0; break; }
+        await s.p.waitForTimeout(200);
+      }
+      expect(at != null && at <= 9000, 'смерть + 3 тоста: кнопка «🥚 Новая жаба» видна не позже 9 с', at == null ? 'не появилась за 13 с' : `через ${(at / 1000).toFixed(1)} с`);
+      await s.close();
+    }
+
+    // 5. Лента тоста (белый текст и чип редкости) — контраст ≥ 4.5:1 с каждым цветом градиента (r3-08-02)
+    {
+      const s = await page('/app/renderer/index.html?clean=1');
+      const low = [];
+      for (const kind of ['good', 'bad', 'secret']) {
+        await s.p.evaluate((kind) => { window.FrogToast.clear(); window.FrogToast.show({ title: 'Проверка', desc: 'Контраст ленты', icon: '🏆', kind, rarity: 'epic' }); }, kind);
+        await s.p.waitForTimeout(700);
+        const r = await s.p.evaluate(() => {
+          const colors = (str) => (str.match(/rgba?\([^)]+\)/g) || []).map((c) => { const v = c.match(/[\d.]+/g).map(Number); return [v[0], v[1], v[2], v[3] == null ? 1 : v[3]]; });
+          const over = (a, b) => [0, 1, 2].map((i) => a[i] * a[3] + b[i] * (1 - a[3])).concat(1);
+          const lum = (c) => { const f = (x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
+          const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+          const rib = document.querySelector('#toast .ribbon');
+          const rcs = getComputedStyle(rib);
+          const stops = colors(rcs.backgroundImage).concat(colors(rcs.backgroundColor).filter((c) => c[3] > 0));
+          const base = [255, 255, 255, 1];
+          const bgs = (stops.length ? stops : [base]).map((c) => over(c, base));
+          const out = [];
+          const txt = rib.querySelector('span');
+          const fg = colors(getComputedStyle(txt).color)[0];
+          out.push({ what: txt.textContent.trim(), ratio: Math.min(...bgs.map((bg) => ratio(over(fg, bg), bg))) });
+          const rar = rib.querySelector('.rar');
+          if (rar) {
+            const chip = colors(getComputedStyle(rar).backgroundColor)[0] || [0, 0, 0, 0];
+            const cfg = colors(getComputedStyle(rar).color)[0];
+            out.push({ what: 'чип ' + rar.textContent.trim(), ratio: Math.min(...bgs.map((bg) => { const cb = over(chip, bg); return ratio(over(cfg, cb), cb); })) });
+          }
+          return out;
+        });
+        for (const c of r) if (c.ratio < 4.5) low.push(`${kind} «${c.what}» ${c.ratio.toFixed(2)}`);
+      }
+      expect(low.length === 0, 'тост: контраст ленты ≥ 4.5:1', low.join(', '));
+      await s.close();
+    }
+
+    // 6. reduced motion: в состоянии critical canvas не пульсирует (кольца, значок, жар, пот) (r3-08-03)
+    {
+      const s = await page('/app/renderer/index.html?clean=1', { reducedMotion: 'reduce' });
+      await s.p.mouse.move(1000, 700);
+      // пары кадров через 1 с; берём минимум из трёх, чтобы случайное моргание не давало ложных срабатываний
+      const diff = async () => {
+        // кадр снимаем и сравниваем в странице: гонять мегабайты пикселей через CDP слишком долго
+        const snap = () => s.p.evaluate(() => { const c = document.querySelector('#cv'); window.__qaFrame = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; });
+        const changed = () => s.p.evaluate(() => {
+          const c = document.querySelector('#cv');
+          const a = window.__qaFrame, b = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+          // область над головой: значок «!», кольца, жар и капли пота; счёт — в CSS-пикселях
+          const k = c.width / 260;
+          let n = 0;
+          for (let j = 0; j < a.length; j += 4) {
+            const x = ((j / 4) % c.width) / k, y = Math.floor(j / 4 / c.width) / k;
+            if (x < 88 || x > 178 || y < 42 || y > 128) continue;
+            if (Math.abs(a[j] - b[j]) + Math.abs(a[j + 1] - b[j + 1]) + Math.abs(a[j + 2] - b[j + 2]) + Math.abs(a[j + 3] - b[j + 3]) > 24) n++;
+          }
+          return Math.round(n / (k * k));
+        });
+        let best = Infinity;
+        for (let i = 0; i < 3; i++) {
+          await snap();
+          await s.p.waitForTimeout(1000);
+          best = Math.min(best, await changed());
+        }
+        return best;
+      };
+      // activity idle: жаба не печатает, в кадре движется только то, что рисует critical
+      await view(s.p, { activity: 'idle', dry: 0.9, glass: 0, needs: { water: true, move: true }, critical: { water: true, move: true }, doom: { water: 0.85, move: 0.85 } });
+      await s.p.waitForTimeout(3000);
+      const crit = await diff();
+      expect(crit <= 300, 'reduced motion: critical на canvas не пульсирует (2 кадра через 1 с)', `над головой изменилось ${crit} CSS-пикселей (порог 300)`);
+      expect(s.errors.length === 0, 'reduced motion canvas: без ошибок консоли', s.errors.join(' | '));
+      await s.close();
+    }
+
+    // 7. Фокус с клавиатуры виден на каждой кнопке окон: outline или box-shadow, отличный от покоя (r3-08-01)
+    for (const [name, url, size] of [['trophies', '/app/renderer/trophies.html', { width: 720, height: 560 }], ['settings', '/app/renderer/settings.html', { width: 520, height: 560 }], ['welcome', '/app/renderer/welcome.html', { width: 560, height: 520 }], ['welcome-4', '/app/renderer/welcome.html?slide=4', { width: 560, height: 520 }]]) {
+      for (const scheme of ['light', 'dark']) {
+        const s = await page(url, { viewport: size, scheme });
+        await s.p.evaluate(() => document.querySelectorAll('button, [role=button], a.btn').forEach((el, i) => { el.dataset.qaI = i; }));
+        const seen = new Map();
+        for (let i = 0; i < 40; i++) {
+          await s.p.keyboard.press('Tab');
+          await s.p.waitForTimeout(200);   // box-shadow у кнопок с transition 0.12–0.15 с
+          const f = await s.p.evaluate(() => {
+            const el = document.activeElement;
+            if (!el || el.dataset.qaI == null) return null;
+            const cs = getComputedStyle(el);
+            return { i: el.dataset.qaI, text: (el.textContent.trim() || el.getAttribute('aria-label') || el.title || '?').slice(0, 24), fv: el.matches(':focus-visible'), outline: cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0, shadow: cs.boxShadow };
+          });
+          if (!f) continue;
+          if (seen.has(f.i)) break;   // круг замкнулся
+          seen.set(f.i, f);
+        }
+        await s.p.evaluate(() => document.activeElement && document.activeElement.blur());
+        await s.p.waitForTimeout(300);
+        const bad = [];
+        for (const f of seen.values()) {
+          const rest = await s.p.evaluate((i) => getComputedStyle(document.querySelector(`[data-qa-i="${i}"]`)).boxShadow, f.i);
+          if (!f.fv) bad.push(`«${f.text}» без :focus-visible`);
+          else if (!f.outline && (f.shadow === 'none' || f.shadow === rest)) bad.push(`«${f.text}»`);
+        }
+        expect(seen.size > 0 && bad.length === 0, `${name}/${scheme}: фокус виден на всех ${seen.size} кнопках`, seen.size ? 'невидимый фокус: ' + bad.join(', ') : 'Tab не дошёл ни до одной кнопки');
+        await s.close();
+      }
+    }
+  }
+
+  await round3();
+  if (ONLY_R3) return finish();
+
   await scene('idle', async (p) => {
     const a = await dbg(p, () => window.__frogDebug.state());
     await p.waitForTimeout(5000);
@@ -148,7 +367,7 @@ async function main() {
     const s = await page('/app/renderer/index.html?clean=1');
     const cut = await s.p.evaluate(() => {
       const P = window.FrogCore.PHRASES;
-      const CTX = { min: '1 ч 35 мин', n: 12, drinks: 7, breaks: 5, coding: '3 ч 20 мин', maxSit: '1 ч 5 мин', gen: 12, age: '2 дня 3 ч' };
+      const CTX = { min: '1 ч 35 мин', n: 12, drinks: 7, breaks: 5, coding: '3 ч 20 мин', maxSit: '1 ч 5 мин', gen: 12, age: '2 дня 3 ч', rip: 'на кладбище' };
       const fill = (x) => x.replace(/\{(\w+)\}/g, (_, k) => (CTX[k] != null ? CTX[k] : ''));
       const list = (k) => (P[k] || []).map(fill);
       const cases = [];
@@ -313,6 +532,9 @@ async function main() {
     await s.close();
   }
 
+  return finish();
+
+  async function finish() {
   await browser.close();
   srv.close();
   const report = { passed: passed.length, failed: failures.length, failures, out: OUT };
@@ -320,6 +542,7 @@ async function main() {
   console.log(`UI-проверки: ${passed.length} ок, ${failures.length} провалов. Скриншоты: ${OUT}`);
   failures.forEach((f) => console.log('  ✗ ' + f));
   process.exit(failures.length ? 1 : 0);
+  }
 }
 
 main().catch((e) => { console.error(e); process.exit(2); });
