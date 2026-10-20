@@ -15,7 +15,7 @@ const NO_DEATH = HAS_DEATH ? false : 'в core.js ещё нет life/death/revive
 // Фейковый ctl поверх настоящего core — как demo.js / main.js
 function makeCtl(T0 = new Date(2026, 9, 19, 11, 0, 0).getTime()) {
   // timed: события с секундой сценария (c.clock), steps: что режиссёр сделал и когда
-  const c = { now: T0, pet: null, A: null, events: [], unlocked: [], log: [], timed: [], steps: [], toasts: [], clock: () => 0, fix: (ev) => ev };
+  const c = { now: T0, pet: null, A: null, events: [], unlocked: [], log: [], timed: [], steps: [], toasts: [], hud: [], clock: () => 0, fix: (ev) => ev };
   const check = (evs) => {
     if (!c.A) return;
     const fresh = c.A.check({ now: c.now, events: evs, view: c.pet.view(c.now), state: c.pet.serialize(), settings: Core.DEFAULTS }) || [];
@@ -42,6 +42,7 @@ function makeCtl(T0 = new Date(2026, 9, 19, 11, 0, 0).getTime()) {
       }
       took(evs);
       c.steps.push({ at: c.clock(), cmd: 'ff', quiet: !evs.length });
+      c.hud.push(hudOf(c));
       c.events.push(...evs);
       check(evs);
     },
@@ -63,6 +64,13 @@ function makeCtl(T0 = new Date(2026, 9, 19, 11, 0, 0).getTime()) {
     caption(text) { c.steps.push({ at: c.clock(), cmd: 'caption', text }); assert.ok(text && text.length < 70, 'титр короткий: ' + text); },
   };
   return c;
+}
+
+// счётчики HUD 9:16 (как render() в demo.js): «💧 без воды N», «🪑 сидит N»; null — жаба мертва
+function hudOf(c) {
+  const v = c.pet.view(c.now);
+  const dead = v.life === 'dead';
+  return { at: c.clock(), water: dead ? null : Math.round((v.waterRatio || 0) * Core.DEFAULTS.waterEvery), sit: dead ? null : (v.sitMin || 0) };
 }
 
 // Фейковые часы для режиссёра
@@ -394,5 +402,90 @@ test('docs/shorts.md согласован со сценариями: длины 
   }
   for (const st of Show.SCRIPTS.short.steps.filter((x) => x.cmd === 'caption')) {
     assert.ok(doc.includes(st.text.replace(/\s*\p{Extended_Pictographic}+$/u, '').trim()), 'в docs/shorts.md нет титра short: ' + st.text);
+  }
+});
+
+// ---------- круг 4 (G5) ----------
+
+test('фразы смерти и возрождения на съёмке взяты из core (r1-05-08 regressed, r3-05-01)', () => {
+  for (const cause of ['dry', 'stone']) {
+    const line = Show.LINES['death:' + cause];
+    assert.ok(Core.PHRASES['death_' + cause].includes(line), `death:${cause} «${line}» нет в core PHRASES.death_${cause}`);
+  }
+  assert.ok(Core.PHRASES.reborn.includes(Show.LINES.reborn), 'reborn из core');
+  assert.ok(!JSON.stringify(Show.LINES).includes('Слишком долго сидели'), 'старая фраза-упрёк не вернулась');
+});
+
+// Титр в 9:16 до 2 строк по ~40 символов, а в окне жабы (260 px) — ещё уже, поэтому короче надёжнее
+const len = (s) => [...String(s)].length;
+test('титры короткие: ≤ 40 символов, влезают в 2 строки и в окне жабы (r1-04-02, r3-03-01)', () => {
+  for (const name of Object.keys(Show.SCRIPTS)) {
+    for (const st of Show.SCRIPTS[name].steps.filter((x) => x.cmd === 'caption')) {
+      assert.ok(len(st.text) <= 40, `${name}: титр ${len(st.text)} символов: «${st.text}»`);
+    }
+  }
+});
+
+test('число в титре не спорит со счётчиком HUD в кадре (r3-04-03)', { skip: NO_DEATH }, () => {
+  // «2 часа без воды», «1 ч 15 мин без перерыва», «45 минут не встаю» → минуты и счётчик
+  const claim = (text) => {
+    const m = text.match(/(\d+)\s*(ч|час\w*)(?:\s*(\d+)\s*мин\w*)?\s+(без воды|без перерыва|сидит|сижу|не встаю|не пью)|(\d+)\s*мин\w*\s+(без воды|без перерыва|сидит|сижу|не встаю|не пью)/);
+    if (!m) return null;
+    const min = m[1] ? +m[1] * 60 + (+m[3] || 0) : +m[5];
+    const what = m[4] || m[6];
+    return { min, key: /вод|пью/.test(what) ? 'water' : 'sit' };
+  };
+  for (const name of NAMES) {
+    const { c } = play(name);
+    for (const st of c.steps.filter((x) => x.cmd === 'caption')) {
+      const k = claim(st.text);
+      if (!k) continue;
+      const end = st.at + capSec(st.text);
+      // что показывал HUD, пока висел титр (последний снимок до начала + все снимки внутри)
+      const before = c.hud.filter((h) => h.at <= st.at).pop();
+      const shown = [before].concat(c.hud.filter((h) => h.at > st.at && h.at < end)).filter(Boolean).map((h) => h[k.key]);
+      for (const v of shown) {
+        assert.ok(v != null && Math.abs(v - k.min) <= 5, `${name}: титр «${st.text}» (${st.at} с) = ${k.min} мин, а счётчик ${v == null ? 'RIP' : v + ' мин'}`);
+      }
+    }
+  }
+});
+
+test('титр о смерти — не раньше смерти, CTA с действием (r3-04-04)', { skip: NO_DEATH }, () => {
+  for (const name of NAMES) {
+    const { c } = play(name);
+    const deaths = c.timed.filter((x) => x.ev.type === 'death').map((x) => x.at);
+    for (const st of c.steps.filter((x) => x.cmd === 'caption' && /FATAL|hardened|RIP|умерла|засохла|окаменела|🪦/.test(x.text))) {
+      assert.ok(deaths.some((d) => d <= st.at && st.at - d < 15), `${name}: титр «${st.text}» на ${st.at} с, а смерть на ${deaths.map((d) => d.toFixed(1))}`);
+    }
+    // облачко RIP уже говорит FATAL — титр его не повторяет
+    for (const st of c.steps.filter((x) => x.cmd === 'caption')) {
+      assert.ok(!/FATAL|hardened/.test(st.text), `${name}: титр повторяет облачко RIP: «${st.text}»`);
+    }
+  }
+  for (const name of ['short', 'water', 'stone']) {
+    const caps = Show.SCRIPTS[name].steps.filter((x) => x.cmd === 'caption');
+    const last = caps[caps.length - 1].text;
+    assert.match(last, /Ссылка|ссылка|Попей|Встань|Скачай/, `${name}: в CTA есть действие: «${last}»`);
+  }
+});
+
+test('нет долгих пауз без титров: ≤ 16 с между титрами (r3-04-05)', () => {
+  for (const name of Object.keys(Show.SCRIPTS)) {
+    const s = Show.SCRIPTS[name];
+    const ts = s.steps.filter((x) => x.cmd === 'caption').map((x) => x.t);
+    for (let i = 1; i < ts.length; i++) assert.ok(ts[i] - ts[i - 1] <= 16, `${name}: ${ts[i - 1]}→${ts[i]} с без титров (${(ts[i] - ts[i - 1]).toFixed(1)} с)`);
+    assert.ok(s.duration - ts[ts.length - 1] <= 16, name + ': хвост без титров');
+  }
+});
+
+test('docs/shorts.md: для TikTok/Reels рекомендованы water и stone (решение круга 4)', () => {
+  const doc = fs.readFileSync(path.join(__dirname, '../docs/shorts.md'), 'utf8');
+  assert.match(doc, /TikTok[^\n]*Reels[^\n]*`water`[^\n]*`stone`|TikTok[^\n]*Reels[^\n]*`stone`[^\n]*`water`/, 'строка-рекомендация water/stone для TikTok и Reels');
+  assert.match(doc, /stage=desktop/, 'режим записи для десктопа описан');
+  for (const name of ['water', 'stone']) {
+    for (const st of Show.SCRIPTS[name].steps.filter((x) => x.cmd === 'caption')) {
+      assert.ok(doc.includes(st.text.replace(/\s*\p{Extended_Pictographic}+$/u, '').trim()), `в docs/shorts.md нет титра ${name}: ${st.text}`);
+    }
   }
 });

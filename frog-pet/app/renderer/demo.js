@@ -2,7 +2,9 @@
 // рабочий стол macOS, даём перемотку времени и режим съёмки (FrogShowcase).
 // Параметры URL: ?dry= ?stone= ?glass= ?activity= — зафиксировать вид (скриншоты),
 // ?film=short|water|stone|tour — запустить сценарий, ?ratio=9:16 — вертикальная сцена,
-// ?clean=1 — без UI демо (для iframe на лендинге).
+// ?clean=1 — без UI демо (для iframe на лендинге),
+// ?stage=desktop — запись горизонтального экрана: без карточки демо, жаба крупно справа внизу,
+// титр и счётчики над ней (колонка 9:16 справа — можно обрезать под шортс).
 (function () {
   'use strict';
   if (window.frog) return;
@@ -14,12 +16,14 @@
   const q = new URLSearchParams(location.search);
   const VERT = q.get('ratio') === '9:16';
   const CLEAN = q.get('clean') === '1';
-  const SCALED = VERT || CLEAN;
+  const DESK = !VERT && !CLEAN && q.get('stage') === 'desktop';
+  const SCALED = VERT || CLEAN || DESK;
 
   const root = document.documentElement;
   root.classList.add('demo');
   if (VERT) root.classList.add('demo-916');
   if (CLEAN) root.classList.add('demo-clean');
+  if (DESK) root.classList.add('demo-desk');
 
   // ---------- масштаб жабы ----------
   // canvas в pet.js рисует с учётом devicePixelRatio, поэтому при увеличении через transform
@@ -29,6 +33,8 @@
   function calcZoom() {
     if (VERT) return Math.max(1, Math.min(innerWidth * 0.98 / 260, (innerHeight - 330) / 320));   // место под подпись сверху и HUD снизу
     if (CLEAN) return Math.max(0.5, Math.min(2, innerWidth / 280, innerHeight / 330));
+    // десктоп: жаба на ~60% высоты под меню-баром, титром и счётчиками; колонка 9:16 справа
+    if (DESK) return Math.max(1, Math.min(3, (innerHeight - 200) / 320, innerHeight * 9 / 16 / 270));
     return 1;
   }
   if (SCALED) {
@@ -57,7 +63,7 @@
     .demo-card button, .demo-card a.btn, .demo-card select { border: 0; border-radius: 10px; padding: 6px 11px; background: #e7efe4; color: #1f2a22; font: 600 13px/1.2 inherit; font-family: inherit; cursor: pointer; text-decoration: none; }
     .demo-card button.on { background: #3fae5a; color: #fff; }
     .demo-card button.film.on { background: #b5487a; }
-    .demo-row select { flex: 1; min-width: 0; }
+    .demo-row select { flex: 1 1 100%; min-width: 0; }   /* своей строкой: название сценария целиком (r3-02-02) */
     .demo-card a.btn { background: #1f2a22; color: #fff; display: inline-block; margin-top: 6px; }
     .demo-clock { font: 600 13px Menlo, monospace; color: #4b5a4f; }
     .demo-stats { font-size: 13px; color: #4b5a4f; }
@@ -111,6 +117,18 @@
     .demo-hud .ff { background: #b5487a; opacity: 0; transition: opacity .25s; }
     .demo-hud .ff.on { opacity: 1; }
     .demo-hud .bad { background: rgba(230,70,70,.45); }
+
+    /* ---------- запись десктопа ?stage=desktop: колонка 9:16 у правого края ---------- */
+    html.demo-desk { --col: min(100vw, calc(100vh * 9 / 16)); }
+    html.demo-desk .demo-card, html.demo-desk .demo-note { display: none; }
+    html.demo-desk #pet { left: auto; right: calc(var(--col) / 2); top: auto; bottom: 6px; margin: 0; transform-origin: 50% 100%;
+      transform: translateX(50%) scale(var(--z, 1.5)); }
+    html.demo-desk .demo-cap { left: auto; right: calc(var(--col) / 2); top: 84px; transform: translateX(50%); width: max-content;
+      max-width: calc(var(--col) - 24px); font-size: 24px; }
+    html.demo-desk .demo-cap.off { transform: translateX(50%) translateY(-10px) scale(.96); }
+    html.demo-desk .demo-hud { display: flex; position: fixed; left: auto; right: calc(var(--col) / 2); top: 36px; transform: translateX(50%); z-index: 6;
+      gap: 6px; font: 700 15px/1 Menlo, ui-monospace, monospace; color: #e9ecff; white-space: nowrap; }
+    html.demo-desk #hClock { display: none; }
   `;
   document.head.appendChild(css);
 
@@ -138,7 +156,7 @@
     <a class="btn" href="https://github.com/vraiuk/princess-dragon/releases?q=frog" target="_blank" rel="noopener">⬇︎ Скачать для macOS</a>
     <details><summary>Как она считает</summary>
       Вода: стакан пустеет за 45 мин, потом жаба просит пить и начинает сохнуть.
-      Движение: через 50 мин сидения — напоминание и каменеет снизу вверх.
+      Движение: через 50 мин сидения жаба напомнит размяться и начнёт каменеть снизу вверх.
       Если 5 минут не трогать мышь и клавиатуру (или заблокировать экран), перерыв засчитывается сам.
       Хардкор: 2 ч 15 мин без воды или 2 ч сидения — и жаба умирает. Потом можно высидеть новую 🥚
     </details>`;
@@ -259,8 +277,8 @@
     document.getElementById('dTray').textContent = dead ? ' 🪦' : v.paused ? ' ⏸' : (v.needs.water ? ' 💧' : '') + (v.needs.move ? ' 🗿' : '');
     document.getElementById('dStats').textContent = dead
       ? `🪦 Жабка #${v.generation} ${v.cause === 'stone' ? 'окаменела' : 'засохла'}. Наведи на неё и нажми «🥚 Новая жаба»`
-      : `💧 вода через ${v.waterLeftMin} мин · 🧘 сидишь ${v.sitMin} мин · сегодня стаканов ${v.day.drinks}, перерывов ${v.day.breaks}`;
-    if (VERT) {
+      : `${v.waterLeftMin > 0 ? '💧 вода через ' + fmtDur(v.waterLeftMin) : '💧 пора пить воду'} · 🧘 сидишь ${fmtDur(v.sitMin || 0)} · сегодня стаканов ${v.day.drinks}, перерывов ${v.day.breaks}`;
+    if (VERT || DESK) {
       const noWater = Math.round((v.waterRatio || 0) * settings.waterEvery);
       document.getElementById('hClock').textContent = '🕒 ' + hhmm;
       const $w = document.getElementById('hWater'), $s = document.getElementById('hSit');
@@ -315,7 +333,10 @@
   document.getElementById('dReset').addEventListener('click', () => { stopFilm(); resetPet(); });
   bar.querySelector('.demo-tray').addEventListener('click', () => {
     const v = pet.view(simNow);
-    emit('event', { type: 'say', text: `Вода через ${v.waterLeftMin} мин, разминка через ${v.moveLeftMin}. Тут в приложении — трофеи, настройки, пауза.` });
+    // как меню-бар в main: «пора пить воду», а не «Вода через 0 мин» (r3-05-05)
+    const water = v.waterLeftMin > 0 ? `Вода через ${fmtDur(v.waterLeftMin)}` : 'Пора пить воду';
+    const move = v.moveLeftMin > 0 ? `разминка через ${fmtDur(v.moveLeftMin)}` : 'пора размяться';
+    emit('event', { type: 'say', text: `${water}, ${move}. Тут в приложении — трофеи, настройки, пауза.` });
   });
 
   // ---------- действия (как в main) ----------
