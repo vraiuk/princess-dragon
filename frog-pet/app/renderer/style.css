@@ -112,16 +112,33 @@ html, body {
 #side.hidden .ring.alert { animation: none; }   /* невидимые кнопки не пульсируют впустую */
 @keyframes pulse { 50% { transform: scale(1.12); box-shadow: 0 3px 14px rgba(255,90,60,.7), 0 0 0 1.5px #1d3b26; } }
 
-/* ---------- титр съёмки (событие caption) ---------- */
+/* ---------- титр съёмки (событие caption) ----------
+   Слева от стакана (стакан x 198–236: уровень воды виден и «при смерти»), до 3 строк;
+   шрифт ужимает fitCaption в pet.js, чтобы любой титр влез целиком без многоточия. */
 #caption {
-  position: absolute; left: 6px; right: 6px; bottom: 8px; z-index: 40; pointer-events: none;
-  padding: 6px 10px; border-radius: 12px; background: rgba(12,18,14,.78); color: #fff;
-  font-weight: 800; font-size: 18px; line-height: 1.2; max-width: 248px; margin: 0 auto;
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; letter-spacing: -.01em; text-align: center; text-wrap: balance;
+  position: absolute; left: 6px; right: 64px; bottom: 8px; z-index: 40; pointer-events: none;
+  width: fit-content; max-width: 190px; margin: 0 auto;
+  padding: 6px 9px; border-radius: 12px; background: rgba(12,18,14,.8); color: #fff;
+  font-weight: 800; font-size: 18px; line-height: 1.2; overflow: hidden;
+  letter-spacing: -.01em; text-align: center; text-wrap: balance; overflow-wrap: normal;
   text-shadow: 0 1px 2px rgba(0,0,0,.6); box-shadow: 0 4px 14px rgba(0,0,0,.35);
   transition: opacity .25s, transform .25s;
 }
+#caption.clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow-wrap: anywhere; }   /* крайний случай: не влез и в 12px */
 #caption.off { opacity: 0; transform: translateY(8px); }
+
+/* ---------- облачко «при смерти» или у надгробия важнее тоста ----------
+   облачко не прячется (pet.js: класс bubble-first на #pet), а тост показывается внизу, над ноутбуком:
+   кнопки «Попил / Размялся / 🥚» видны сразу, ачивку тоже видно */
+#pet.bubble-first #toast { top: auto; bottom: 6px; transform-origin: 50% 100%; }
+#pet.bubble-first #toast.show { animation-name: toastInLow; }
+#pet.bubble-first #toast.hide { animation-name: toastOutLow; }
+@keyframes toastInLow {
+  0% { opacity: 0; transform: translateY(120%) scale(.85) rotate(3deg); }
+  60% { opacity: 1; }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes toastOutLow { 0% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(110%) scale(.92); } }
 
 /* ---------- меньше движения: без бесконечной тряски и пульса ---------- */
 @media (prefers-reduced-motion: reduce) {
@@ -129,4 +146,6 @@ html, body {
   #bubble.crit, #bubble.dead button.main, .ring.alert { animation: none; }
   .ring.alert { box-shadow: 0 3px 14px rgba(255,90,60,.7), 0 0 0 1.5px #1d3b26; }
   .ring:hover, .mini:hover { transform: none; }
+  #pet.bubble-first #toast.show { animation-name: toastFade; }
+  #pet.bubble-first #toast.hide { animation-name: toastFade; }   /* направление reverse — из toast.css */
 }

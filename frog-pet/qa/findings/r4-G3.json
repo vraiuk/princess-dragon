@@ -1,0 +1,81 @@
+[
+ {
+  "finding": "r3-03-01",
+  "verdict": "confirmed",
+  "why": "Титр стоял на всю ширину окна, line-clamp 2 и шрифт 18px: длинные титры резались многоточием, плашка закрывала стакан (x 198–236).",
+  "fix": "style.css #caption: блок слева от стакана (left 6, right 64, ширина по тексту ≤190px), без clamp; pet.js fitCaption(): шрифт 18→12px, пока текст не влезет в 3 строки без вылезающих слов; .clamp (3 строки) только как крайний случай. Проверка: все 33 титра SCRIPTS и 8 длинных титров круга 3 целиком, ≤3 строк, ≥12px, не над стаканом и не на облачке. До: 16 провалов (стакан), после: 0. Скриншоты before/cap-*.png, after/caps-sheet.png.",
+  "test": "qa/findings/r4-G3.check.js"
+ },
+ {
+  "finding": "r1-04-02",
+  "verdict": "confirmed",
+  "why": "Остаток из r3-01 (still-broken): титры в Electron доходят, но обрезались.",
+  "fix": "См. r3-03-01. e2e r4-film зелёный.",
+  "test": "qa/findings/r4-G3.check.js"
+ },
+ {
+  "finding": "r3-03-02",
+  "verdict": "confirmed",
+  "why": "Облачко мысли проверяло только !bubbleKind, а say() без kind (приветствие после вылупления) оставляет kind=null.",
+  "fix": "pet.js speaking() = bubbleKind || облачко не hidden; мысль, значок нужды и значок «при смерти» не рисуются, пока говорит облачко.",
+  "test": "qa/findings/r4-G3.check.js"
+ },
+ {
+  "finding": "r3-03-03",
+  "verdict": "confirmed",
+  "why": "Условие не учитывало камень и сухость.",
+  "fix": "Мысль только при sm.stone < 0.5 и sm.dry < 0.5. Проверено stone 0.7/1 и dry 0.7/0.95.",
+  "test": "qa/findings/r4-G3.check.js"
+ },
+ {
+  "finding": "r3-03-04",
+  "verdict": "confirmed",
+  "why": "Точки переключались по t всегда.",
+  "fix": "reduce: все три точки статично тёмные.",
+  "test": "qa/findings/r4-G3.check.js"
+ },
+ {
+  "finding": "r3-08-03",
+  "verdict": "confirmed",
+  "why": "drawEffects и heartbeat не проверяли reduceMotion: в полосе колец до фикса менялось 1571 пикс. за 0.74 с, после 0.",
+  "fix": "reduce: heartbeat() = 0.5 (значок, красное свечение, тон тела ровные), кольца стоят, значок не качается, пот не капает, жар и значок нужды не двигаются. Чтобы прошла проверка G8 в ui-check (весь холст ≤150 пикс.), в reduce также отключены дыхание, качание языка и рта, блуждающий взгляд, летящие символы кода и стук лапок, а переходы сухости и камня идут в 3 раза быстрее. qa:ui: 115/0.",
+  "test": "qa/findings/r4-G3.check.js; qa/ui-check.js (reduced motion: critical)"
+ },
+ {
+  "finding": "r1-02-06",
+  "verdict": "confirmed",
+  "why": "say() и updateSide ставили under-toast при любом тосте, поэтому облачко crit с кнопками было скрыто, пока шли тосты. До фикса: hidden 12/12 и перекрытие 12/12.",
+  "fix": "Облачка crit и dead важнее тоста: не прячутся. pet.js ставит #pet.bubble-first, а style.css опускает тост к низу окна (bottom 6px, свои keyframes въезда снизу; в reduce остаётся fade). Обычные напоминания по-прежнему ждут под тостом (это контрольная проверка). Скриншоты: before/crit-toast.png, after/crit-toast.png.",
+  "test": "qa/findings/r4-G3.check.js"
+ },
+ {
+  "finding": "r1-02-07",
+  "verdict": "confirmed",
+  "why": "Задержку давал pet.js: облачко RIP с кнопкой получало under-toast и ждало очереди из 3 тостов. Надгробие поднималось на 6.5 с, кнопка появлялась на 10.96 с.",
+  "fix": "То же, что в r1-02-06: облачко dead не прячется под тостом. Теперь кнопка «🥚» видна и кликабельна (elementFromPoint) не позже чем через 1 с после надгробия, тост идёт внизу. death.js не менялся: onTomb от тостов не зависит.",
+  "test": "qa/findings/r4-G3.check.js",
+  "handoff": "app/renderer/toast.js (G4), по желанию: при #pet.bubble-first конфетти и пепел вылетают из верхней зоны (ox/oy в burst), а сам тост теперь внизу. Лучше брать начало от el.getBoundingClientRect()."
+ },
+ {
+  "finding": "r1-03-09",
+  "verdict": "confirmed",
+  "why": "На #111 кант наушников (35% светлого) давал 2.46:1. Пар по замеру 6.5:1 по самому яркому пикселю, но на скриншоте был тусклым.",
+  "fix": "pet.js: кант наушников 70% и 12.5px, сейчас ≥3:1. Пар: альфа растёт быстрее, под оранжевым светлая подложка. after/dark-dry.png.",
+  "test": "qa/findings/r4-G3.check.js",
+  "handoff": "app/renderer/death.js (G4): наушники на надгробии (около стр. 528) и мини-наушники (стр. 420) рисуются #1f2330 без светлого канта, на тёмных обоях сливаются. Добавить обводку rgba(205,215,240,.7) на 2–3 px шире, как в pet.js drawBack."
+ },
+ {
+  "finding": "r1-05-05",
+  "verdict": "confirmed",
+  "why": "Остаток из r3-01: подсказки кнопок показывали сырые минуты, например «Сидишь 110 мин» и «через 125 мин».",
+  "fix": "Подсказки 💧 и 🤸 берут время из FrogCore.fmtDur («1 ч 50 мин»). При 0 вместо «через 0 мин» пишется «вот-вот».",
+  "test": "qa/findings/r4-G3.check.js"
+ },
+ {
+  "finding": "r1-10-06",
+  "verdict": "confirmed",
+  "why": "В index.html было default-src 'self', поэтому fetch('/package.json') читался.",
+  "fix": "index.html: CSP как в trophies.html (default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'). fetch блокируется. Демо, ?clean=1, ?film=short, лендинг с iframe работают без ошибок консоли. e2e 24/24, qa:ui 115/0. settings.html и welcome.html в зоне G7.",
+  "test": "qa/findings/r4-G3.check.js"
+ }
+]

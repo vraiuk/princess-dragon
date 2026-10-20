@@ -118,6 +118,8 @@
     const t = document.getElementById('toast');
     return !!t && (t.classList.contains('show') || t.classList.contains('hide'));
   }
+  const PRIO = /\b(crit|dead)\b/;
+  const bubbleUp = () => !$bubble.classList.contains('hidden');   // облачко на экране (с kind или без)
   function say(text, opts = {}) {
     clearTimeout(bubbleTimer);
     $bubble.querySelector('.txt').textContent = text;
@@ -131,7 +133,8 @@
       el.addEventListener('click', (e) => { e.stopPropagation(); hideBubble(); b.do(); });
       btns.appendChild(el);
     });
-    $bubble.className = (opts.kind || '') + (toastUp() ? ' under-toast' : '');
+    // «при смерти» и надгробие с кнопкой важнее тоста: не ждут под ним, тост уезжает вниз (style.css bubble-first)
+    $bubble.className = (opts.kind || '') + (!PRIO.test(opts.kind || '') && toastUp() ? ' under-toast' : '');
     // скринридер: «при смерти» — срочно (alert), остальное — вежливо (status)
     const urgent = /\bcrit\b/.test(opts.kind || '');
     $bubble.setAttribute('role', urgent ? 'alert' : 'status');
@@ -155,6 +158,8 @@
     const h = $bubble.offsetHeight;
     if (h > room) $bubble.style.bottom = Math.max(150, BUBBLE_BOTTOM - (h - room)) + 'px';
   }
+  // говорит облачко: значки над головой его не перебивают
+  const speaking = () => !!bubbleKind || bubbleUp();
   function hideBubble() {
     clearTimeout(bubbleTimer);
     $bubble.classList.add('hidden');
@@ -275,11 +280,25 @@
   // ---------- титры съёмки ----------
   const $caption = document.getElementById('caption');
   let capTimer = null;
+  // любой титр целиком: до 3 строк, шрифт от 18px вниз до 12px; длинное слово тоже не должно вылезать
+  const CAP_MAX = 18, CAP_MIN = 12, CAP_LINES = 3;
+  function fitCaption() {
+    const c = $caption;
+    c.classList.remove('clamp');
+    const cs = getComputedStyle(c), pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    for (let fs = CAP_MAX; fs >= CAP_MIN; fs--) {
+      c.style.fontSize = fs + 'px';
+      const lh = parseFloat(getComputedStyle(c).lineHeight) || fs * 1.2;
+      if (c.scrollWidth <= c.clientWidth + 1 && c.scrollHeight - pad <= lh * CAP_LINES + 1) return;
+    }
+    c.classList.add('clamp');
+  }
   function caption(text) {
     if (!$caption) return;
     clearTimeout(capTimer);
     if (!text) { $caption.classList.add('off'); return; }
     $caption.textContent = text;
+    fitCaption();
     $caption.classList.remove('off');
     capTimer = setTimeout(() => $caption.classList.add('off'), Math.max(2600, Math.min(6000, String(text).length * 120)));
   }
@@ -378,7 +397,8 @@
   function rr(g, x, y, w, h, r) { g.beginPath(); g.roundRect(x, y, w, h, r); }
 
   function frogTransform(g, t) {
-    let dy = 0, sx = 1, sy = 1 + 0.012 * Math.sin(t * (view.activity === 'away' ? 1.3 : 2.2)) * (1 - sm.stone);
+    // дыхание; reduce — жаба стоит ровно
+    let dy = 0, sx = 1, sy = reduceMotion.matches ? 1 : 1 + 0.012 * Math.sin(t * (view.activity === 'away' ? 1.3 : 2.2)) * (1 - sm.stone);
     if (anim.jump) {
       const p = (t - anim.jump.t0) / anim.jump.dur;
       const ph = (p * 3) % 1;
@@ -485,7 +505,7 @@
     const pdy = fx && fx.phonesDY ? fx.phonesDY : 0;
     if (phones) {
       // светлый кант — чтобы тёмные наушники не терялись на тёмных обоях
-      g.strokeStyle = 'rgba(205,215,240,.35)'; g.lineWidth = 12;
+      g.strokeStyle = 'rgba(205,215,240,.7)'; g.lineWidth = 12.5;
       g.beginPath(); g.arc(130, 152 + pdy, 76, Math.PI * 1.07, Math.PI * 1.93); g.stroke();
       g.strokeStyle = '#1f2330'; g.lineWidth = 9;
       g.beginPath(); g.arc(130, 152 + pdy, 76, Math.PI * 1.06, Math.PI * 1.94); g.stroke();
@@ -504,7 +524,7 @@
     // наушники: чашки поверх
     const led = view.paused ? '#ff5d5d' : view.activity === 'coding' ? '#6ee7b7' : '#8aa0ff';
     for (const [x, dir] of phones ? [[62, -1], [198, 1]] : []) {
-      g.strokeStyle = 'rgba(205,215,240,.35)'; g.lineWidth = 3;
+      g.strokeStyle = 'rgba(205,215,240,.7)'; g.lineWidth = 3;
       rr(g, x - 9, 132 + pdy, 18, 38, 8); g.stroke();
       g.fillStyle = '#1f2330';
       rr(g, x - 9, 132 + pdy, 18, 38, 8); g.fill();
@@ -562,7 +582,8 @@
   }
 
   // красноватый тревожный отлив «при смерти», пульсирует как сердцебиение
-  function heartbeat(t) { const p = (t * 1.25) % 1; return Math.max(Math.exp(-Math.pow((p - 0.08) / 0.05, 2)), 0.7 * Math.exp(-Math.pow((p - 0.28) / 0.05, 2))); }
+  // сердцебиение «при смерти»; reduce — ровный уровень без пульса
+  function heartbeat(t) { if (reduceMotion.matches) return 0.5; const p = (t * 1.25) % 1; return Math.max(Math.exp(-Math.pow((p - 0.08) / 0.05, 2)), 0.7 * Math.exp(-Math.pow((p - 0.28) / 0.05, 2))); }
   function applyCrit(g, t) {
     const cr = critLevel();
     if (!cr) return;
@@ -615,7 +636,7 @@
     const happy = anim.drink || anim.jump || anim.squish || (fx && fx.happy);
     if (view.activity === 'away') {
       g.fillStyle = C.line;
-      ell(g, 130, 163, 4, 3 + Math.sin(t * 1.3)); g.fill();
+      ell(g, 130, 163, 4, 3 + (reduceMotion.matches ? 0 : Math.sin(t * 1.3))); g.fill();
     } else if (sm.stone > 0.6 && !happy) {
       g.beginPath(); g.moveTo(108, 163); g.lineTo(152, 163); g.stroke();
     } else if (happy) {
@@ -628,7 +649,7 @@
       g.fillStyle = '#4a1d22';
       ell(g, 130, 164, 13, 5 + 3 * k); g.fill(); g.stroke();
       g.fillStyle = '#e8728a';
-      const len = 8 + 16 * k + Math.sin(t * 3) * 1.5;
+      const len = 8 + 16 * k + (reduceMotion.matches ? 0 : Math.sin(t * 3) * 1.5);   // reduce: язык не качается
       g.beginPath();
       g.moveTo(123, 165); g.lineTo(123, 165 + len);
       g.arc(130, 165 + len, 7, Math.PI, 0, true);
@@ -731,7 +752,7 @@
     g.clearRect(0, 0, W, H);
     g.save();
     frogTransform(g, t);
-    const typing = view.activity === 'coding' && sm.stone < 0.85 && !anim.jump;
+    const typing = view.activity === 'coding' && sm.stone < 0.85 && !anim.jump && !reduceMotion.matches;   // reduce: лапки не стучат
     const tap = (ph) => (typing ? -3.5 * Math.max(0, Math.sin(t * 17 + ph)) : 0);
     const jumpArms = anim.jump ? -14 : 0;
     for (const [x, ph, dir] of [[90, 0, -1], [170, Math.PI * 0.9, 1]]) {
@@ -844,30 +865,36 @@
   }
 
   function drawEffects(g, t, dt) {
-    // жар над пересохшей жабой
+    const rm = reduceMotion.matches;   // меньше движения: значки и жар стоят, без пульса и бегущих точек
+    const ta = rm ? 0 : t;
+    const quiet = speaking();
+    // жар над пересохшей жабой: светлая подложка под оранжевым — видно и на тёмных, и на светлых обоях
     if (sm.dry > 0.5 && (alive() || (fx && fx.show && (fx.scale == null || fx.scale > 0.7)))) {
+      const a = Math.min(1, (sm.dry - 0.5) * 2.2);
       g.save();
-      g.strokeStyle = `rgba(255,170,60,${(sm.dry - 0.5) * 0.9})`;
-      g.lineWidth = 2; g.lineCap = 'round';
-      for (const x of [104, 130, 156]) {
-        g.beginPath();
-        for (let k = 0; k <= 12; k++) {
-          const y = 90 + OY - k * 2.2 - ((t * 12) % 8);
-          g.lineTo(x + Math.sin(k * 0.9 + t * 4 + x) * 3, y);
+      g.lineCap = 'round';
+      for (const [col, lw] of [[`rgba(255,226,170,${0.45 * a})`, 4], [`rgba(255,150,40,${0.9 * a})`, 2]]) {
+        g.strokeStyle = col; g.lineWidth = lw;
+        for (const x of [104, 130, 156]) {
+          g.beginPath();
+          for (let k = 0; k <= 12; k++) {
+            const y = 90 + OY - k * 2.2 - ((ta * 12) % 8);
+            g.lineTo(x + Math.sin(k * 0.9 + ta * 4 + x) * 3, y);
+          }
+          g.stroke();
         }
-        g.stroke();
       }
       g.restore();
     }
 
     // «при смерти»: тревожный значок с пульсирующими кольцами
     const cr = critLevel();
-    if (critTarget() && !bubbleKind) {
+    if (critTarget() && !quiet) {
       const hb = heartbeat(t);
-      const x = 130, y = 66 + OY + Math.sin(t * 3) * 2;
+      const x = 130, y = 66 + OY + Math.sin(ta * 3) * 2;
       g.save();
       for (const ph of [0, 0.5]) {
-        const k = (t * 0.9 + ph) % 1;
+        const k = rm ? 0.2 + ph : (t * 0.9 + ph) % 1;
         g.strokeStyle = `rgba(255,60,60,${0.7 * (1 - k)})`; g.lineWidth = 2.5 * (1 - k) + 0.5;
         ell(g, x, y, 14 + k * 22, 14 + k * 22); g.stroke();
       }
@@ -883,17 +910,18 @@
       g.restore();
     }
     // капли пота от ужаса
-    if (critTarget() && Math.random() < 0.06) particles.push({ kind: 'drop', x: rnd(80, 180), y: rnd(110, 140) + OY, vx: rnd(-0.6, 0.6), vy: rnd(-1.5, 0), size: rnd(1.6, 2.6), life: 0, max: 0.7 });
+    if (critTarget() && !rm && Math.random() < 0.06) particles.push({ kind: 'drop', x: rnd(80, 180), y: rnd(110, 140) + OY, vx: rnd(-0.6, 0.6), vy: rnd(-1.5, 0), size: rnd(1.6, 2.6), life: 0, max: 0.7 });
 
-    // думает: облачко мысли с бегущими точками справа над головой
-    if (view.activity === 'thinking' && alive() && !cr && !bubbleKind && !(view.needs.water || view.needs.move)) {
+    // думает: облачко мысли с бегущими точками справа над головой.
+    // Не поверх реплики (она может быть и без kind) и не у камня или изюма — те не думают
+    if (view.activity === 'thinking' && alive() && !cr && !quiet && sm.stone < 0.5 && sm.dry < 0.5 && !(view.needs.water || view.needs.move)) {
       g.save();
       g.fillStyle = 'rgba(255,253,245,.95)'; g.strokeStyle = '#1d3b26'; g.lineWidth = 1.5;
       ell(g, 186, 82 + OY, 3, 3); g.fill(); g.stroke();
       ell(g, 194, 70 + OY, 4.5, 4.5); g.fill(); g.stroke();
       rr(g, 192, 38 + OY, 44, 22, 11); g.fill(); g.stroke();
       for (let i = 0; i < 3; i++) {
-        const on = Math.floor(t * 2.5) % 4 > i;
+        const on = rm || Math.floor(t * 2.5) % 4 > i;
         g.fillStyle = on ? '#1f2a22' : 'rgba(31,42,34,.25)';
         ell(g, 203 + i * 11, 49 + OY, 2.6, 2.6); g.fill();
       }
@@ -901,13 +929,13 @@
     }
 
     // значок нужды над головой
-    if (!cr && alive() && !bubbleKind && (view.needs.water || view.needs.move) && view.activity !== 'away') {
+    if (!cr && alive() && !quiet && (view.needs.water || view.needs.move) && view.activity !== 'away') {
       const icon = view.needs.water && view.needs.move ? '💧🗿' : view.needs.water ? '💧' : '🗿';
       g.save();
-      g.globalAlpha = 0.85 + 0.15 * Math.sin(t * 4);
-      g.font = `${20 + 2 * Math.sin(t * 4)}px "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
+      g.globalAlpha = 0.85 + 0.15 * Math.sin(ta * 4);
+      g.font = `${20 + 2 * Math.sin(ta * 4)}px "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
       g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillText(icon, 130, 64 + OY + Math.sin(t * 2.5) * 3);
+      g.fillText(icon, 130, 64 + OY + Math.sin(ta * 2.5) * 3);
       g.restore();
     }
 
@@ -1017,7 +1045,8 @@
     syncLife(dt);
     fx = Death ? Death.frogFx(t) : null;
     const fast = anim.jump || anim.drink;
-    const rate = first ? 1 : 1 - Math.exp(-dt * (fast ? 2.2 : 0.9));
+    // reduce: переходы сухости и камня короче — без долгого «ползущего» перекрашивания
+    const rate = first ? 1 : 1 - Math.exp(-dt * (fast ? 2.2 : 0.9) * (reduceMotion.matches ? 3 : 1));
     first = false;
     const r2 = 1 - Math.exp(-dt * 4);
     sm.dry = fx && fx.dry != null ? lerp(sm.dry, fx.dry, r2) : lerp(sm.dry, view.dry || 0, anim.drink ? rate * 0.6 : rate);
@@ -1038,7 +1067,7 @@
     else if (view.activity === 'coding' && t > glanceUntil) { tx = 130; ty = 260 + OY; }
     else if (view.activity === 'thinking' && !cursorFresh) { tx = 215; ty = 20 + OY; }
     else if (cursorFresh) { tx = cursor.x; ty = cursor.y; }
-    else { tx = 130 + Math.sin(t * 0.4) * 120; ty = 140 + OY; }
+    else { tx = reduceMotion.matches ? 130 : 130 + Math.sin(t * 0.4) * 120; ty = 140 + OY; }   // reduce: взгляд не бродит
     const dx = tx - 130, dy = ty - (114 + OY), d = Math.hypot(dx, dy) || 1;
     const m = Math.min(6, d * 0.04);
     const frozen = sm.stone > 0.93;
@@ -1048,7 +1077,8 @@
     }
 
     // частицы-эмиттеры
-    if (view.activity === 'coding' && sm.stone < 0.85 && !anim.jump && alive()) {
+    // reduce: без летящих символов кода — «пишет код» видно по свечению экрана
+    if (view.activity === 'coding' && sm.stone < 0.85 && !anim.jump && alive() && !reduceMotion.matches) {
       if ((glyphTimer -= dt) <= 0) {
         glyphTimer = rnd(0.5, 1.1);
         const glyphs = ['{ }', '</>', ';', '=>', '()', '[]', '&&', '!=', 'fn', '01', '++', '#', '$', '//', '?.'];
@@ -1119,7 +1149,9 @@
   let sideStamp = '';
   function updateSide() {
     // пока висит тост ачивки, облачко прячется под него и возвращается после
-    $bubble.classList.toggle('under-toast', toastUp());
+    const prio = bubbleUp() && PRIO.test($bubble.className);
+    $bubble.classList.toggle('under-toast', !prio && toastUp());
+    $pet.classList.toggle('bubble-first', prio);
     $pet.classList.toggle('away', view.activity === 'away');   // CSS-тряска «при смерти» не крутится, пока человека нет
     const dead = !alive();
     const stamp = [view.waterLeftMin, view.moveLeftMin, view.needs.water, view.needs.move, hover, dead].join();
@@ -1127,8 +1159,10 @@
     sideStamp = stamp;
     $bDrink.style.setProperty('--p', clamp(view.glass, 0, 1).toFixed(3));
     $bMove.style.setProperty('--p', clamp(1 - view.sitRatio, 0, 1).toFixed(3));
-    $bDrink.title = view.needs.water ? 'Пора пить! Нажми, когда попьёшь' : `Попил воды (следующий стакан через ${view.waterLeftMin} мин)`;
-    $bMove.title = view.needs.move ? `Сидишь ${view.sitMin} мин — встань!` : `Размялся (разминка через ${view.moveLeftMin} мин)`;
+    const dur = (m) => (window.FrogCore && FrogCore.fmtDur ? FrogCore.fmtDur(m) : `${Math.round(m) || 0} мин`);
+    const soon = (m) => (m > 0 ? `через ${dur(m)}` : 'вот-вот');
+    $bDrink.title = view.needs.water ? 'Пора пить! Нажми, когда попьёшь' : `Попил воды (следующий стакан ${soon(view.waterLeftMin)})`;
+    $bMove.title = view.needs.move ? `Сидишь ${dur(view.sitMin)} — встань!` : `Размялся (разминка ${soon(view.moveLeftMin)})`;
     $bDrink.classList.toggle('alert', !!view.needs.water);
     $bMove.classList.toggle('alert', !!view.needs.move);
     $side.classList.toggle('hidden', !hover || dead);
