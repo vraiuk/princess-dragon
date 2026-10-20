@@ -15,6 +15,20 @@
   const SEC = 1000, MIN = 60 * SEC;
   const DAY_MIN = 24 * 60;
 
+  // Пороги смерти и настройки по умолчанию — как в core.js (DEATH_WATER, DEATH_STONE, DEFAULTS);
+  // модуль без зависимостей, поэтому копия, а test/achievements.test.js сверяет её с core
+  const DEATH_WATER = 3.0, DEATH_STONE = 2.4;
+  const DEF_SET = { waterEvery: 45, moveEvery: 50, deathEnabled: true };
+  const IRON_MIN = 120, IRON_SHARE = 0.9, SPEEDRUN_MIN = 180;
+  const interval = (set, k) => (typeof set[k] === 'number' && isFinite(set[k]) && set[k] > 0 ? set[k] : DEF_SET[k]);
+  // «Железножопая жаба»: 2 часа, но не дольше 90% пути до каменной смерти — иначе в хардкоре
+  // при коротком интервале разминки жаба окаменеет раньше, чем ачивка станет возможной
+  function ironMin(set) {
+    set = set && typeof set === 'object' ? set : {};
+    if (set.deathEnabled === false) return IRON_MIN;
+    return Math.min(IRON_MIN, IRON_SHARE * DEATH_STONE * interval(set, 'moveEvery'));
+  }
+
   const dayKey = (t) => {
     const d = new Date(t);
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -59,11 +73,11 @@
     { id: 'streak7', kind: 'good', rarity: 'legendary', icon: '🏅', title: 'Неделя без багов',
       desc: '7 хороших дней подряд. LTS-версия тебя.', max: 7, cur: (c) => c.streak() },
     { id: 'alive3', kind: 'good', rarity: 'rare', icon: '🌱', title: 'Не пропадёт',
-      desc: 'Жаба прожила 3 дня. Аптайм лучше, чем у прода.', max: 3, cur: (c) => c.ageDays },
+      desc: 'Жаба живёт 3 дня по календарю. Аптайм лучше, чем у прода.', max: 3, cur: (c) => c.ageDays },
     { id: 'alive7', kind: 'good', rarity: 'epic', icon: '🌿', title: 'Аптайм 99.9%',
-      desc: 'Жаба прожила неделю. SLA выполнен.', max: 7, cur: (c) => c.ageDays },
+      desc: 'Жаба живёт 7 дней по календарю. SLA выполнен.', max: 7, cur: (c) => c.ageDays },
     { id: 'alive30', kind: 'good', rarity: 'legendary', icon: '🌳', title: 'Долгожитель',
-      desc: 'Жаба прожила 30 дней. Пора выпускать мемуары.', max: 30, cur: (c) => c.ageDays },
+      desc: 'Жаба живёт 30 дней по календарю. Пора выпускать мемуары.', max: 30, cur: (c) => c.ageDays },
     { id: 'phoenix', kind: 'good', rarity: 'common', icon: '🐣', title: 'Феникс',
       desc: 'Возродил жабу. Have you tried turning it off and on again?',
       test: (c) => hasEv(c, 'reborn') || num(c.view.generation) >= 2 },
@@ -72,8 +86,8 @@
 
     // ---------- позорные ----------
     { id: 'iron_butt', kind: 'bad', rarity: 'epic', icon: '🪑', title: 'Железножопая жаба',
-      desc: '2 часа без перерыва. Стул просит пощады.',
-      test: (c) => num(c.view.sitMin) >= 120 || c.day.maxSit >= 120 },
+      desc: 'До 2 ч без перерыва, почти до камня. Стул просит пощады.',
+      test: (c) => num(c.view.sitMin) >= c.ironMin || c.day.maxSit >= c.ironMin },
     { id: 'jade', kind: 'bad', rarity: 'rare', icon: '🗿', title: 'Нефритовая жаба',
       desc: 'Жаба окаменела насмерть. Зато в Китае ценится.', test: (c) => c.deathsStone >= 1 },
     { id: 'raisin', kind: 'bad', rarity: 'rare', icon: '🍇', title: 'Изюм',
@@ -88,8 +102,8 @@
     { id: 'tamagotchi', kind: 'bad', rarity: 'legendary', icon: '💀', title: 'Тамагочи-убийца',
       desc: '5 мёртвых жаб. Тебе нельзя даже кактус.', max: 5, cur: (c) => c.deaths },
     { id: 'speedrun', kind: 'bad', rarity: 'rare', icon: '⏱️', title: 'Speedrun any%',
-      desc: 'Жаба умерла, не прожив и 3 часов.',
-      test: (c) => hasEv(c, 'death', (e) => typeof e.ageMin === 'number' && e.ageMin < 180) },
+      desc: 'Умерла за 3 часа или без единого стакана и перерыва.',
+      test: (c) => hasEv(c, 'death', (e) => (typeof e.ageMin === 'number' && e.ageMin < SPEEDRUN_MIN) || !c.s.cared) },
     { id: 'vobla', kind: 'bad', rarity: 'common', icon: '🐟', title: 'Сушёная вобла',
       desc: 'Довёл жабу до критической засухи. К пиву сойдёт.',
       test: (c) => hasEv(c, 'critical', (e) => e.kind === 'water') || !!(c.view.critical && c.view.critical.water) },
@@ -145,6 +159,9 @@
       pokes: 0, drags: 0, snoozes: 0, drinks: 0, stretches: 0, backs: 0,
       deaths: 0, deathsDry: 0, deathsStone: 0, lastDeathAt: 0,
       pokeTimes: [], drinkTimes: [], deathDays: [], bornAt: 0,
+      // cared: этой жабе давали воду или перерыв (для speedrun). У старых сохранений поля нет —
+      // считаем, что давали, чтобы не выдать ачивку зря
+      cared: !!saved.s,
     }, saved.s || {});
     ['pokeTimes', 'drinkTimes', 'deathDays'].forEach((k) => { if (!Array.isArray(s[k])) s[k] = []; });
 
@@ -170,18 +187,19 @@
           case 'dragged': s.drags++; break;
           case 'snooze': s.snoozes++; break;
           case 'drink':
+            s.cared = true;
             s.drinks++; s.drinkTimes.push(now);
             if (s.drinkTimes.length > 3) s.drinkTimes = s.drinkTimes.slice(-3);
             break;
-          case 'stretch': s.stretches++; break;
-          case 'back': s.backs++; break;
+          case 'stretch': s.stretches++; s.cared = true; break;
+          case 'back': s.backs++; s.cared = true; break;
           case 'death':
             s.deaths++;
             if (e.cause === 'dry') s.deathsDry++;
             if (e.cause === 'stone') s.deathsStone++;
             s.lastDeathAt = now;
             break;
-          case 'reborn': s.bornAt = now; break;
+          case 'reborn': s.bornAt = now; s.cared = false; break;
         }
       }
       if (!s.bornAt && !dead) s.bornAt = now;
@@ -222,6 +240,7 @@
         deathsDry: Math.max(num(totals.deathsDry), s.deathsDry),
         deathsStone: Math.max(num(totals.deathsStone), s.deathsStone),
         ageDays: dead ? 0 : Math.floor(ageMin / DAY_MIN),
+        ironMin: ironMin(ctx.settings),
         streak: () => streak(state, sd),
         zeroDowntime: () => zeroDowntime(state),
         balancedDay: () => balancedDay(state),
@@ -324,5 +343,5 @@
     id: d.id, title: d.title, desc: d.desc, icon: d.icon, kind: d.kind, rarity: d.rarity, max: d.max || null,
   }));
 
-  return { createAchievements, DEFS: PUBLIC_DEFS, HIDDEN };
+  return { createAchievements, DEFS: PUBLIC_DEFS, HIDDEN, ironMin, DEATH_WATER, DEATH_STONE, DEF_SET };
 });

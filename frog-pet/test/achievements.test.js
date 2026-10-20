@@ -201,7 +201,7 @@ test('«Железножопая» не выдаётся за созвон на 
   let { t, got } = run(pet, A, T0, 80);
   pet.pause(t, 60);
   let r = run(pet, A, t, 60); got.push(...r.got);  // созвон на паузе
-  r = run(pet, A, r.t, 30); got.push(...r.got);    // 80 + 30 = 110 мин реального сидения
+  r = run(pet, A, r.t, 20); got.push(...r.got);    // 80 + 20 = 100 мин реального сидения (порог при дефолтах 0.9 × 2.4 × 50 = 108)
   const idleFrom = r.t;
   r = run(pet, A, r.t, 6, (now) => (now - idleFrom) / 1000); got.push(...r.got);   // перерыв
   r = run(pet, A, r.t, 90); got.push(...r.got);
@@ -311,4 +311,116 @@ test('r1-06-07: balanced оценивается по закрытому дню, 
   got = ids(A.check({ now: new Date(2026, 9, 15, 9).getTime(), events: [], view: {}, state: { history: [day(14)], day: day(15, { drinks: 0, autoBreaks: 0 }) } }));
   assert.ok(got.includes('balanced'));
   assert.match(DEFS.find((d) => d.id === 'balanced').desc, /6 перерывов/);
+});
+
+// ---- R4 (G10): пороги ачивок согласованы с настройками ----
+
+const MOVE = [30, 45, 50, 60, 90], WATER = [30, 45, 60, 90]; // значения из settings.html
+
+// Человек пьёт вовремя, но не встаёт; check получает те же настройки, что и жаба (как main и демо)
+function sitter(settings) {
+  const t0 = new Date(2026, 9, 19, 10, 0).getTime();
+  const pet = Core.createPet(null, settings, t0);
+  const A = createAchievements(null);
+  const got = [];
+  let t = t0, lastDrink = t0, aliveAtIron = null;
+  const check = (events) => {
+    const fresh = ids(A.check({ now: t, events, view: pet.view(t), state: pet.serialize(), settings }));
+    if (fresh.includes('iron_butt')) aliveAtIron = pet.view(t).life === 'alive';
+    got.push(...fresh);
+  };
+  check(pet.tick(t, 0));
+  for (let i = 0; i < 6 * 180 && !got.includes('iron_butt') && pet.view(t).life === 'alive'; i++) {
+    t += 20 * 1000;
+    check(pet.tick(t, 1));
+    if (t - lastDrink >= (settings.waterEvery - 1) * MIN) { lastDrink = t; check([pet.drink(t)]); }
+  }
+  return { got, aliveAtIron, view: pet.view(t) };
+}
+
+test('ironMin совпадает с порогами core и решением: min(120, 0.9 × время до камня)', () => {
+  assert.strictEqual(FrogAchievements.DEATH_STONE, Core.DEATH_STONE);
+  assert.strictEqual(FrogAchievements.DEATH_WATER, Core.DEATH_WATER);
+  for (const k of Object.keys(FrogAchievements.DEF_SET)) assert.strictEqual(FrogAchievements.DEF_SET[k], Core.DEFAULTS[k], k);
+  const im = FrogAchievements.ironMin;
+  assert.strictEqual(im({ moveEvery: 30, deathEnabled: true }), 0.9 * 2.4 * 30);
+  assert.strictEqual(im({ moveEvery: 90, deathEnabled: true }), 120);
+  assert.strictEqual(im({ moveEvery: 30, deathEnabled: false }), 120);
+  assert.strictEqual(im({}), 0.9 * 2.4 * 50, 'нет настроек — дефолты core');
+  assert.strictEqual(im({ moveEvery: NaN }), 0.9 * 2.4 * 50);
+});
+
+test('r1-06-08: iron_butt достижима при любых moveEvery × waterEvery × хардкор', () => {
+  for (const moveEvery of MOVE) for (const waterEvery of WATER) for (const deathEnabled of [true, false]) {
+    const set = Object.assign({}, Core.DEFAULTS, { moveEvery, waterEvery, deathEnabled });
+    const r = sitter(set);
+    const tag = JSON.stringify({ moveEvery, waterEvery, deathEnabled }) + ' sitMin=' + r.view.sitMin + ' ' + r.view.life + '/' + r.view.cause;
+    assert.ok(r.got.includes('iron_butt'), tag);
+    assert.strictEqual(r.aliveAtIron, true, 'выдаётся до окаменения: ' + tag);
+  }
+});
+
+test('r1-06-08: iron_butt не раньше порога (2 ч без хардкора, 108 мин при дефолтах)', () => {
+  for (const [set, lim] of [[Object.assign({}, Core.DEFAULTS), 108], [Object.assign({}, Core.DEFAULTS, { moveEvery: 90, deathEnabled: false }), 120]]) {
+    const A = createAchievements(null);
+    const view = (sitMin) => ({ life: 'alive', sitMin });
+    assert.ok(!ids(A.check({ now: T0, events: [], view: view(lim - 1), state: {}, settings: set })).includes('iron_butt'), String(lim));
+    assert.ok(ids(A.check({ now: T0, events: [], view: view(lim), state: {}, settings: set })).includes('iron_butt'), String(lim));
+  }
+  assert.match(DEFS.find((d) => d.id === 'iron_butt').desc, /2 ч/);
+});
+
+// Полное безразличие: ни воды, ни разминки, за компом
+function neglect(settings) {
+  const h = { t: T0, pet: Core.createPet(null, settings, T0), A: createAchievements(null), got: [] };
+  const check = (events) => h.got.push(...ids(h.A.check({ now: h.t, events, view: h.pet.view(h.t), state: h.pet.serialize(), settings })));
+  check(h.pet.tick(h.t, 0));
+  h.step = (n, drinkAt) => {
+    for (let i = 0; i < n && h.pet.view(h.t).life === 'alive'; i++) {
+      h.t += 20 * 1000; check(h.pet.tick(h.t, 1));
+      if (drinkAt && i === drinkAt) check([h.pet.drink(h.t)]);
+    }
+  };
+  return h;
+}
+
+test('r1-06-08: speedrun достижима в хардкоре при любых интервалах (жаба без воды и перерывов)', () => {
+  for (const moveEvery of MOVE) for (const waterEvery of WATER) {
+    const set = Object.assign({}, Core.DEFAULTS, { moveEvery, waterEvery });
+    const h = neglect(set);
+    h.step(3 * 24 * 180);
+    const v = h.pet.view(h.t);
+    assert.strictEqual(v.life, 'dead', JSON.stringify(set));
+    assert.ok(h.got.includes('speedrun'), JSON.stringify({ moveEvery, waterEvery, ageMin: v.ageMin }));
+  }
+});
+
+test('r1-06-08: speedrun — «за 3 часа»; за заботу и долгую жизнь не выдаётся', () => {
+  // дефолты: стакан на 10-й минуте, смерть от камня через 2 ч — меньше 3 ч
+  let h = neglect(Object.assign({}, Core.DEFAULTS));
+  h.step(10000, 30);
+  assert.ok(h.pet.view(h.t).ageMin < 180 && h.got.includes('speedrun'), h.got.join(','));
+  // 90/90: стакан был, умерла позже 3 ч — нет
+  h = neglect(Object.assign({}, Core.DEFAULTS, { moveEvery: 90, waterEvery: 90 }));
+  h.step(10000, 30);
+  assert.strictEqual(h.pet.view(h.t).life, 'dead');
+  assert.ok(h.pet.view(h.t).ageMin >= 180 && !h.got.includes('speedrun'), h.pet.view(h.t).ageMin + ' ' + h.got.join(','));
+  // старое сохранение без поля cared: не выдаём за чужие стаканы до первого перерождения
+  const B = createAchievements({ s: { drinks: 3 } });
+  const got = ids(B.check({ now: T0, events: [{ type: 'death', cause: 'stone', ageMin: 300 }], view: { life: 'dead' }, state: {} }));
+  assert.ok(!got.includes('speedrun'), got.join(','));
+});
+
+test('alive3/7/30: возраст по календарю, и текст об этом говорит честно', () => {
+  for (const [id, n] of [['alive3', 3], ['alive7', 7], ['alive30', 30]]) {
+    assert.match(DEFS.find((d) => d.id === id).desc, new RegExp('^Жаба живёт ' + n + ' дн[а-я]* по календарю'), id);
+  }
+  // приложение закрыто 3 дня — жаба всё равно живёт 3 дня
+  const pet = Core.createPet(null, {}, T0);
+  const A = createAchievements(null);
+  pet.tick(T0, 0);
+  A.check({ now: T0, events: [], view: pet.view(T0), state: pet.serialize() });
+  const t = T0 + 3 * 24 * HOUR;
+  const ev = pet.tick(t, 0);
+  assert.ok(ids(A.check({ now: t, events: ev, view: pet.view(t), state: pet.serialize() })).includes('alive3'));
 });
